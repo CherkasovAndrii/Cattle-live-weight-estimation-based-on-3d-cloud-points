@@ -109,6 +109,16 @@ cattle3d predict --herd my-farm --left L.ply --right R.ply --top T.ply
 
 With fewer than 10 animals only the intercept is corrected.
 
+### REST API
+
+```bash
+pip install -e ".[api]"
+cattle3d serve            # http://127.0.0.1:8000/docs
+```
+
+Herds, scans, scale weighings, per-herd calibration and drift checks over
+HTTP, stored in SQLite. See [`docs/API.md`](docs/API.md).
+
 ### From Python
 
 ```python
@@ -136,6 +146,8 @@ src/cattle3d/
   pipeline.py              clouds -> feature row (shared by CLI, API, experiments)
   modeling/models.py       physics, robust linear, LightGBM, ensemble
   modeling/weight_model.py deployable artifact: interval, range check, herd calibration
+  modeling/calibration.py  herd correction, its interval, drift check
+  api/                     SQLite store, farm service, FastAPI app (docs/API.md)
   evaluation/              metrics and bootstrap, CV and transfer, study, report
   figures/                 thesis schemes and figures (uk/en) drawn from the code itself
   cli.py                   thin command-line adapter

@@ -9,12 +9,14 @@ Owns: argument parsing, paths and printing. No business logic lives here.
     cattle3d calibrate   --herd NAME --reference ref.csv       -> stores a herd correction in the model
     cattle3d predict     --left L.ply --right R.ply --top T.ply [--herd NAME]  -> JSON
     cattle3d figures     [--cowdb2 PATH --cowdb1 PATH]               -> reports/figures/thesis/{uk,en}/
+    cattle3d serve       [--db data/farm.sqlite3 --port 8000]        -> REST API (needs the [api] extra)
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import asdict
 from pathlib import Path
@@ -175,6 +177,20 @@ def cmd_figures(args: argparse.Namespace) -> None:
         print(f"wrote {path}")
 
 
+def cmd_serve(args: argparse.Namespace) -> None:
+    try:
+        import uvicorn
+
+        from cattle3d.api.app import app_from_files
+    except ImportError:
+        sys.exit('the API needs its extra: pip install -e ".[api]"')
+    api_key = os.environ.get("CATTLE3D_API_KEY")
+    if not api_key and args.host not in ("127.0.0.1", "localhost"):
+        sys.exit("set CATTLE3D_API_KEY before serving beyond localhost")
+    app = app_from_files(Path(args.model), Path(args.db), api_key)
+    uvicorn.run(app, host=args.host, port=args.port)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cattle3d", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -231,6 +247,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-results", action="store_true", help="skip the study-result figures (no 30 s study run)")
     p.add_argument("--out", default=str(REPORTS / "figures" / "thesis"))
     p.set_defaults(func=cmd_figures)
+
+    p = sub.add_parser("serve", help="run the REST API (API key from CATTLE3D_API_KEY)")
+    p.add_argument("--model", default=str(DEFAULT_MODEL))
+    p.add_argument("--db", default="data/farm.sqlite3", help="SQLite file for herds, scans and calibrations")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8000)
+    p.set_defaults(func=cmd_serve)
     return parser
 
 

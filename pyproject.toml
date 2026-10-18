@@ -20,7 +20,8 @@ dependencies = [
 
 [project.optional-dependencies]
 figures = ["matplotlib>=3.8"]
-dev = ["pytest>=8", "matplotlib>=3.8"]
+api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+dev = ["pytest>=8", "matplotlib>=3.8", "fastapi>=0.110", "python-multipart>=0.0.9", "httpx>=0.27"]
 
 [project.scripts]
 cattle3d = "cattle3d.cli:main"

@@ -66,23 +66,35 @@ def _parse_header(raw: bytes) -> tuple[int, np.dtype, int]:
     return n_vertices, np.dtype(fields), body_start
 
 
-def read_points(path: Path) -> np.ndarray:
-    """Return the (N, 3) float64 x/y/z array of a PLY file, in file order."""
-    raw = Path(path).read_bytes()
-    n_vertices, dtype, start = _parse_header(raw)
+def parse_points(raw: bytes, source: str = "PLY") -> np.ndarray:
+    """Return the (N, 3) float64 x/y/z array of PLY bytes, in file order."""
+    try:
+        n_vertices, dtype, start = _parse_header(raw)
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise PlyFormatError(f"{source}: {exc}") from exc
     if start + n_vertices * dtype.itemsize > len(raw):
-        raise PlyFormatError(f"{path}: file shorter than its vertex block")
+        raise PlyFormatError(f"{source}: file shorter than its vertex block")
     vertices = np.frombuffer(raw, dtype=dtype, count=n_vertices, offset=start)
     return np.stack([vertices["x"], vertices["y"], vertices["z"]], axis=1).astype(np.float64)
+
+
+def read_points(path: Path) -> np.ndarray:
+    return parse_points(Path(path).read_bytes(), str(path))
+
+
+def parse_organized_cloud(
+    raw: bytes, source: str = "PLY", height: int = DEPTH_HEIGHT, width: int = DEPTH_WIDTH
+) -> OrganizedCloud:
+    """Parse a dense depth-frame cloud and restore its (H, W) pixel layout."""
+    points = parse_points(raw, source)
+    if points.shape[0] != height * width:
+        raise PlyFormatError(
+            f"{source}: {points.shape[0]} points, expected a dense {height}x{width} frame"
+        )
+    return OrganizedCloud(points.reshape(height, width, 3))
 
 
 def read_organized_cloud(
     path: Path, height: int = DEPTH_HEIGHT, width: int = DEPTH_WIDTH
 ) -> OrganizedCloud:
-    """Read a dense depth-frame cloud and restore its (H, W) pixel layout."""
-    points = read_points(path)
-    if points.shape[0] != height * width:
-        raise PlyFormatError(
-            f"{path}: {points.shape[0]} points, expected a dense {height}x{width} frame"
-        )
-    return OrganizedCloud(points.reshape(height, width, 3))
+    return parse_organized_cloud(Path(path).read_bytes(), str(path), height, width)

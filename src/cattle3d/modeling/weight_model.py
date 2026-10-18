@@ -19,6 +19,12 @@ import pandas as pd
 from cattle3d import __version__
 from cattle3d.evaluation.experiments import conformal_quantile, oof_predictions
 from cattle3d.evaluation.stats import metrics
+from cattle3d.modeling.calibration import (
+    MIN_CALIBRATION_ANIMALS,
+    SLOPE_CALIBRATION_ANIMALS,
+    HerdCorrection,
+    fit_correction,
+)
 from cattle3d.modeling.models import PHYSICS_FEATURE, VOLUME_FEATURES, ensemble_model
 from cattle3d.types import Prediction
 
@@ -27,10 +33,8 @@ MIN_POINTS = {"left_n_points": 3_000, "right_n_points": 3_000, "top_n_points": 8
 # Animals whose trunk volume lies outside the training range by more than
 # this fraction of the range are flagged; out-of-range error is mostly bias.
 RANGE_TOLERANCE = 0.05
-# Herd calibration: below this many reference weighings the herd is not
-# calibrated; from SLOPE_CALIBRATION_ANIMALS on, slope and intercept are fitted.
-MIN_CALIBRATION_ANIMALS = 3
-SLOPE_CALIBRATION_ANIMALS = 10
+
+__all__ = ["MIN_CALIBRATION_ANIMALS", "SLOPE_CALIBRATION_ANIMALS", "ModelInputError", "WeightModel"]
 
 
 class ModelInputError(ValueError):
@@ -91,17 +95,13 @@ class WeightModel:
             raise ValueError(
                 f"at least {MIN_CALIBRATION_ANIMALS} reference weighings are needed to calibrate a herd"
             )
-        raw = self._raw_predict(rows)
-        y = rows["weight_kg"].to_numpy(float)
-        if len(rows) >= SLOPE_CALIBRATION_ANIMALS and np.ptp(raw) > 0:
-            slope, intercept = np.polyfit(raw, y, 1)
-        else:
-            slope, intercept = 1.0, float(np.mean(y - raw))
-        self.herd_corrections[herd] = (float(slope), float(intercept))
+        c = fit_correction(self.raw_predict(rows), rows["weight_kg"].to_numpy(float))
+        self.herd_corrections[herd] = (c.slope, c.intercept_kg)
         return self.herd_corrections[herd]
 
     # ---- prediction ----------------------------------------------------------
-    def _raw_predict(self, rows: pd.DataFrame) -> np.ndarray:
+    def raw_predict(self, rows: pd.DataFrame) -> np.ndarray:
+        """Model output before any herd correction."""
         missing = [f for f in self.features if f not in rows.columns]
         if missing:
             raise ModelInputError(f"missing features: {missing}")
@@ -110,12 +110,22 @@ class WeightModel:
             raise ModelInputError("features contain NaN or infinite values")
         return self.estimator.predict(X)
 
-    def predict_row(self, row: dict[str, float], herd: str | None = None) -> Prediction:
-        return self.predict(pd.DataFrame([row]), herd)[0]
+    def predict_row(
+        self, row: dict[str, float], herd: str | None = None, correction: HerdCorrection | None = None
+    ) -> Prediction:
+        return self.predict(pd.DataFrame([row]), herd, correction)[0]
 
-    def predict(self, rows: pd.DataFrame, herd: str | None = None) -> list[Prediction]:
-        slope, intercept = self.herd_corrections.get(herd or "", (1.0, 0.0))
-        raw = slope * self._raw_predict(rows) + intercept
+    def predict(
+        self, rows: pd.DataFrame, herd: str | None = None, correction: HerdCorrection | None = None
+    ) -> list[Prediction]:
+        """Predict with a herd correction: an explicit ``correction`` (the API
+        keeps one per farm) or one stored in the model under ``herd`` (CLI)."""
+        if correction is not None:
+            slope, intercept, half_width = correction.slope, correction.intercept_kg, correction.half_width_kg
+        else:
+            slope, intercept = self.herd_corrections.get(herd or "", (1.0, 0.0))
+            half_width = self.interval_half_width_kg
+        raw = slope * self.raw_predict(rows) + intercept
         lo, hi = self.volume_range
         tolerance = RANGE_TOLERANCE * (hi - lo)
         out: list[Prediction] = []
@@ -131,8 +141,8 @@ class WeightModel:
             out.append(
                 Prediction(
                     weight_kg=float(weight),
-                    lower_kg=float(weight - self.interval_half_width_kg),
-                    upper_kg=float(weight + self.interval_half_width_kg),
+                    lower_kg=float(weight - half_width),
+                    upper_kg=float(weight + half_width),
                     in_operating_range=not reasons,
                     size_score=float(score),
                     reason="; ".join(reasons) or None,
