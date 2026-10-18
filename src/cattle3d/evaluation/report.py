@@ -14,7 +14,6 @@ import pandas as pd
 from cattle3d.audit import JoinAudit
 from cattle3d.evaluation.stats import metrics
 from cattle3d.evaluation.study import (
-    ENSEMBLE,
     H3B_MARGIN_MAPE,
     HERD_NAMES,
     MODELS,
@@ -264,60 +263,7 @@ def audit_markdown(audit: JoinAudit, control: JoinAudit | None = None) -> str:
 
 
 def write_figures(result: StudyResult, out_dir: Path) -> list[Path]:
-    import matplotlib
+    from cattle3d.figures.draw import Lang
+    from cattle3d.figures.results import write_result_figures
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-    paths = []
-
-    fig, axes = plt.subplots(1, len(result.herds), figsize=(11, 5))
-    for ax, (herd, r) in zip(np.atleast_1d(axes), result.herds.items()):
-        pred = r.oof[ENSEMBLE]
-        ax.scatter(r.weight_kg, pred, s=14, alpha=0.75)
-        lo, hi = r.weight_kg.min() - 20, r.weight_kg.max() + 20
-        ax.plot([lo, hi], [lo, hi], color="grey", lw=1)
-        m = metrics(r.weight_kg, pred)
-        ax.set_title(f"{HERD_NAMES[herd]}\nMAE {m.mae:.1f} kg, MAPE {m.mape:.2f} %", fontsize=10)
-        ax.set_xlabel("scale weight, kg")
-        ax.set_ylabel("predicted (out-of-fold), kg")
-    fig.tight_layout()
-    paths.append(out_dir / "within_herd_oof.png")
-    fig.savefig(paths[-1], dpi=130)
-    plt.close(fig)
-
-    fig, axes = plt.subplots(1, len(result.transfers), figsize=(11, 4.5))
-    for ax, t in zip(np.atleast_1d(axes), result.transfers):
-        for mode, style in (("intercept", "-o"), ("intercept+slope", "--s")):
-            pts = [p for p in t.recalibration if p.mode == mode]
-            ks = [p.k for p in pts]
-            ax.plot(ks, [p.mape_mean for p in pts], style, label=f"correction: {mode}")
-            ax.fill_between(ks, [p.mape_low for p in pts], [p.mape_high for p in pts], alpha=0.15)
-        ax.axhline(t.within_target_mape, color="grey", lw=1, label="within-herd CV")
-        ax.axhline(t.within_target_mape + H3B_MARGIN_MAPE, color="grey", lw=1, ls=":", label="margin")
-        ax.set_title(f"{t.source} → {t.target}", fontsize=10)
-        ax.set_xlabel("reference weighings k")
-        ax.set_ylabel("MAPE, %")
-        ax.legend(fontsize=8)
-    fig.tight_layout()
-    paths.append(out_dir / "recalibration_curve.png")
-    fig.savefig(paths[-1], dpi=130)
-    plt.close(fig)
-
-    fig, axes = plt.subplots(1, len(result.transfers), figsize=(11, 5))
-    for ax, t in zip(np.atleast_1d(axes), result.transfers):
-        yt = result.herds[t.target].weight_kg
-        for name, pred in t.zero_shot.items():
-            ax.scatter(yt, pred, s=10, alpha=0.6, label=name)
-        lo, hi = yt.min() - 30, yt.max() + 30
-        ax.plot([lo, hi], [lo, hi], color="grey", lw=1)
-        ax.set_title(f"zero-shot {t.source} → {t.target}", fontsize=10)
-        ax.set_xlabel("scale weight, kg")
-        ax.set_ylabel("predicted, kg")
-        ax.legend(fontsize=7)
-    fig.tight_layout()
-    paths.append(out_dir / "zero_shot_transfer.png")
-    fig.savefig(paths[-1], dpi=130)
-    plt.close(fig)
-    return paths
+    return write_result_figures(result, out_dir, Lang("en"))

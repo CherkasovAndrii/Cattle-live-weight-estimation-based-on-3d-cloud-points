@@ -14,6 +14,9 @@ and the core library behind the planned API, website and farm tablet app.
             ──► weight, 90 % interval, in-operating-range flag + reason
 ```
 
+A figure-by-figure explanation of the method and of how it plugs into the
+planned API, website and tablet app is in [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md).
+
 ## Results on public data (`reports/results.md`)
 
 Two public herds captured with the same three-Kinect setup:
@@ -78,6 +81,16 @@ cattle3d predict --left L.ply --right R.ply --top T.ply
  "in_operating_range": true, "size_score": 1.38, "reason": null}
 ```
 
+### Thesis figures
+
+```bash
+# 15 schemes and figures, Ukrainian and English -> reports/figures/thesis/{uk,en}/
+cattle3d figures --cowdb2 ../CowDatabase2 --cowdb1 ../CowDatabase
+```
+
+Without the dataset paths only the schemes and the result figures are drawn.
+Ukrainian captions: [`docs/thesis_figure_captions_uk.md`](docs/thesis_figure_captions_uk.md).
+
 ### Calibrating for a new herd
 
 Weigh 10–30 animals on a scale, put their clouds and weights in a CSV
@@ -118,9 +131,11 @@ src/cattle3d/
   modeling/models.py       physics, robust linear, LightGBM, ensemble
   modeling/weight_model.py deployable artifact: interval, range check, herd calibration
   evaluation/              metrics and bootstrap, CV and transfer, study, report
+  figures/                 thesis schemes and figures (uk/en) drawn from the code itself
   cli.py                   thin command-line adapter
 tests/                     synthetic-cloud unit tests, no dataset needed
-reports/                   generated results, never edited by hand
+reports/                   generated results and figures, never edited by hand
+docs/                      how the method works, thesis captions
 ```
 
 ## Evaluation rules

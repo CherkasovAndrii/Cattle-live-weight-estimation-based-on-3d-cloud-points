@@ -199,9 +199,26 @@ def body_frame(points: np.ndarray, floor: Plane) -> np.ndarray:
     return np.stack([planar @ axis, planar @ lateral, height], axis=1)
 
 
-def segment_view(
+@dataclass(frozen=True)
+class SegmentationTrace:
+    """Every intermediate mask of one view, for inspection and figures.
+
+    ``segment_view`` is the trace without the masks; both run the same code.
+    """
+
+    view: View
+    valid: np.ndarray  # (H, W) depth return inside the working distance
+    height: np.ndarray  # (H, W) metres above the fitted floor, 0 where invalid
+    above: np.ndarray  # (H, W) between min_height and max_height
+    labels: np.ndarray  # (H, W) connected-surface id, -1 outside ``above``
+    picked: np.ndarray  # (H, W) the surface chosen as the animal before merging
+    animal: np.ndarray  # (H, W) final animal mask after fragment merging
+    result: SegmentedView
+
+
+def trace_view(
     cloud: OrganizedCloud, view: View, config: SegmentationConfig = SegmentationConfig()
-) -> SegmentedView:
+) -> SegmentationTrace:
     xyz = cloud.xyz
     rng_m = np.linalg.norm(xyz, axis=2)
     valid = cloud.valid & (rng_m > config.min_range_m) & (rng_m < config.max_range_m)
@@ -214,8 +231,8 @@ def segment_view(
     above = valid & (height > config.min_height_m) & (height < config.max_height_m)
 
     labels = _grid_components(above, xyz[..., 2], config.depth_jump_m)
-    animal, n_components = _pick_animal(labels, config.min_component_pixels)
-    animal = _merge_fragments(labels, animal, xyz, config)
+    picked, n_components = _pick_animal(labels, config.min_component_pixels)
+    animal = _merge_fragments(labels, picked, xyz, config)
     points = xyz[animal]
     edge = np.zeros_like(animal)
     edge[:, :3] = edge[:, -3:] = edge[:3, :] = edge[-3:, :] = True
@@ -223,7 +240,7 @@ def segment_view(
     cols_with_animal = max(int(animal.any(axis=0).sum()), 1)
     # Edge pixels relative to the animal's extent: ~0 when fully in frame.
     border = float((animal & edge).sum()) / (3 * (rows_with_animal + cols_with_animal))
-    return SegmentedView(
+    result = SegmentedView(
         view=view,
         body_points=body_frame(points, floor),
         floor=floor,
@@ -232,3 +249,10 @@ def segment_view(
         floor_inlier_ratio=inlier_ratio,
         border_fraction=border,
     )
+    return SegmentationTrace(view, valid, height, above, labels, picked, animal, result)
+
+
+def segment_view(
+    cloud: OrganizedCloud, view: View, config: SegmentationConfig = SegmentationConfig()
+) -> SegmentedView:
+    return trace_view(cloud, view, config).result

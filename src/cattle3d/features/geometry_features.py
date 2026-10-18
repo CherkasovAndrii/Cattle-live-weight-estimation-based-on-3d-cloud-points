@@ -16,6 +16,8 @@ from cattle3d.types import SegmentedView, View
 
 N_SLICES = 64
 _LO, _HI = 2.0, 98.0
+TRUNK_REL_WIDTH = 0.65
+MID_TRUNK = (0.2, 0.8)  # share of the trunk used for the mid-trunk features
 
 
 def _slices(along: np.ndarray, n: int = N_SLICES) -> tuple[np.ndarray, float]:
@@ -67,12 +69,10 @@ def profile_area(body: np.ndarray, value_axis: int, n_slices: int = N_SLICES) ->
     return total
 
 
-def trunk_interval(body: np.ndarray, n_slices: int = N_SLICES, rel_width: float = 0.65) -> tuple[float, float]:
-    """Along-axis span of the trunk in a top view.
+def width_profile(body: np.ndarray, n_slices: int = N_SLICES) -> tuple[np.ndarray, np.ndarray]:
+    """Lateral width (5–95 percentile) of each slice along the body axis, lightly smoothed.
 
-    The head and neck are much narrower than the barrel, so the trunk is the
-    longest run of slices whose lateral width exceeds ``rel_width`` of the
-    widest part (ears and horns can be wide but form short runs).
+    Returns the slice edges (n_slices + 1) and the widths (n_slices).
     """
     edges = np.linspace(*np.percentile(body[:, 0], [0.5, 99.5]), n_slices + 1)
     which = np.digitize(body[:, 0], edges) - 1
@@ -81,7 +81,17 @@ def trunk_interval(body: np.ndarray, n_slices: int = N_SLICES, rel_width: float 
         lateral = body[which == k, 1]
         if lateral.size >= 10:
             widths[k] = np.subtract(*np.percentile(lateral, [95, 5]))
-    widths = np.convolve(widths, np.ones(3) / 3, mode="same")
+    return edges, np.convolve(widths, np.ones(3) / 3, mode="same")
+
+
+def trunk_interval(body: np.ndarray, n_slices: int = N_SLICES, rel_width: float = TRUNK_REL_WIDTH) -> tuple[float, float]:
+    """Along-axis span of the trunk in a top view.
+
+    The head and neck are much narrower than the barrel, so the trunk is the
+    longest run of slices whose lateral width exceeds ``rel_width`` of the
+    widest part (ears and horns can be wide but form short runs).
+    """
+    edges, widths = width_profile(body, n_slices)
     wide = widths >= rel_width * np.percentile(widths, 95)
     best_start, best_len, start = 0, 0, None
     for k, flag in enumerate(np.append(wide, False)):
@@ -127,8 +137,9 @@ def view_features(seg: SegmentedView) -> dict[str, float]:
         feats["trunk_height"] = float(np.percentile(trunk[:, 2], 90))
         # The central 60 % of the trunk stays in frame even when the camera
         # cuts off the rump or the head, so it is the most robust size signal.
-        mid = trunk[(trunk[:, 0] >= lo + 0.2 * (hi - lo)) & (trunk[:, 0] <= hi - 0.2 * (hi - lo))]
-        feats["mid_cs_area"] = cross_section_volume(mid) / max(0.6 * (hi - lo), 1e-6)
+        a, b = lo + MID_TRUNK[0] * (hi - lo), lo + MID_TRUNK[1] * (hi - lo)
+        mid = trunk[(trunk[:, 0] >= a) & (trunk[:, 0] <= b)]
+        feats["mid_cs_area"] = cross_section_volume(mid) / max(b - a, 1e-6)
         feats["mid_width"] = float(np.subtract(*np.percentile(mid[:, 1], [_HI, _LO])))
         feats["mid_height"] = float(np.percentile(mid[:, 2], 95))
     else:

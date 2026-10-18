@@ -8,6 +8,7 @@ Owns: argument parsing, paths and printing. No business logic lives here.
     cattle3d train                                             -> artifacts/weight_model.joblib
     cattle3d calibrate   --herd NAME --reference ref.csv       -> stores a herd correction in the model
     cattle3d predict     --left L.ply --right R.ply --top T.ply [--herd NAME]  -> JSON
+    cattle3d figures     [--cowdb2 PATH --cowdb1 PATH]               -> reports/figures/thesis/{uk,en}/
 """
 
 from __future__ import annotations
@@ -87,7 +88,11 @@ def cmd_audit_join(args: argparse.Namespace) -> None:
 
 
 def cmd_evaluate(args: argparse.Namespace) -> None:
-    from cattle3d.evaluation.report import results_markdown, write_figures, write_oof_csv
+    from cattle3d.evaluation.report import (
+        results_markdown,
+        write_figures,
+        write_oof_csv,
+    )
     from cattle3d.evaluation.study import run_study
 
     table = _load_features(Path(args.features))
@@ -147,6 +152,29 @@ def cmd_predict(args: argparse.Namespace) -> None:
     print(json.dumps(asdict(prediction), indent=2))
 
 
+def cmd_figures(args: argparse.Namespace) -> None:
+    from cattle3d.figures.thesis import write_thesis_figures
+
+    table = _load_features(Path(args.features)) if Path(args.features).is_file() else None
+    study = None
+    if table is not None and not args.no_results:
+        from cattle3d.evaluation.study import run_study
+
+        study = run_study(table, seeds=tuple(range(args.seeds)))
+    half_width = None
+    if Path(args.model).is_file():
+        from cattle3d.modeling.weight_model import WeightModel
+
+        half_width = WeightModel.load(Path(args.model)).interval_half_width_kg
+    paths = write_thesis_figures(
+        Path(args.out), tuple(args.lang), table,
+        Path(args.cowdb2) if args.cowdb2 else None, Path(args.cowdb1) if args.cowdb1 else None,
+        study, half_width,
+    )
+    for path in paths:
+        print(f"wrote {path}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cattle3d", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -192,6 +220,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top", required=True)
     p.add_argument("--herd", help="apply this herd's stored calibration offset")
     p.set_defaults(func=cmd_predict)
+
+    p = sub.add_parser("figures", help="thesis schemes and figures, Ukrainian and English")
+    p.add_argument("--features", default=str(DEFAULT_FEATURES))
+    p.add_argument("--model", default=str(DEFAULT_MODEL), help="its interval width goes on the decision scheme")
+    p.add_argument("--cowdb2", help="CowDatabase2 checkout: stage figures on a real cow")
+    p.add_argument("--cowdb1", help="CowDatabase checkout: the join-audit figure")
+    p.add_argument("--lang", nargs="+", choices=["uk", "en"], default=["uk", "en"])
+    p.add_argument("--seeds", type=int, default=5)
+    p.add_argument("--no-results", action="store_true", help="skip the study-result figures (no 30 s study run)")
+    p.add_argument("--out", default=str(REPORTS / "figures" / "thesis"))
+    p.set_defaults(func=cmd_figures)
     return parser
 
 
