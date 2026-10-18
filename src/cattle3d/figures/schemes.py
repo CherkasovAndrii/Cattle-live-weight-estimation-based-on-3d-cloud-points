@@ -10,7 +10,7 @@ from itertools import pairwise
 from pathlib import Path
 
 from cattle3d.evaluation.study import H3B_MARGIN_MAPE, RECAL_KS
-from cattle3d.features.geometry_features import N_SLICES
+from cattle3d.features.geometry_features import N_PROFILE, N_SLICES
 from cattle3d.figures.draw import Canvas, Lang
 from cattle3d.geometry.segment import SegmentationConfig
 from cattle3d.modeling.models import VOLUME_FEATURES
@@ -90,16 +90,16 @@ def pipeline_scheme(out: Path, t: Lang) -> Path:
     c.arrow(boxes[3].right(), boxes[4].left())
     c.arrow(boxes[4].right(), boxes[5].left())
 
-    feats = c.box(0.3, 4.55, 15.4, 3.0, "", style="step")
+    feats = c.box(0.3, 4.3, 15.4, 3.6, "", style="step")
     c.text(8.0, feats.y + feats.h - 0.3, t(f"Ознаки тварини: {len(VOLUME_FEATURES)} для моделі + контроль якості",
                                              f"Animal features: {len(VOLUME_FEATURES)} for the model + quality"),
            9.0, weight="bold")
     columns = [
         (t("Верхній ракурс", "Top view"),
          t(f"• об’єм тулуба ({N_SLICES} зрізи)\n• площа середнього перерізу\n"
-           "• ширина, висота, довжина тулуба\n• площа проекції тулуба",
+           f"• ширина, висота, довжина тулуба\n• площа проекції тулуба\n• профіль спини: {N_PROFILE} зрізів",
            f"• trunk volume ({N_SLICES} slices)\n• mid-trunk cross-section area\n"
-           "• trunk width, height, length\n• trunk footprint area")),
+           f"• trunk width, height, length\n• trunk footprint area\n• back profile: {N_PROFILE} slices")),
         (t("Бокові ракурси (L і R)", "Side views (L and R)"),
          t("• площа середньої частини тіла\n• висота середньої частини\n• довжина тіла\n• об’єм «площа × висота»",
            "• mid-body side area\n• mid-body height\n• body length\n• box volume footprint × height")),

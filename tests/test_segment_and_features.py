@@ -5,6 +5,7 @@ from cattle3d.features.geometry_features import (
     animal_features,
     cross_section_volume,
     trunk_interval,
+    trunk_profile,
     view_features,
 )
 from cattle3d.geometry.segment import SegmentationError, segment_view
@@ -60,6 +61,21 @@ def test_trunk_interval_excludes_a_narrow_neck():
     lo, hi = trunk_interval(np.vstack([trunk, neck]))
     assert lo == pytest.approx(0.0, abs=0.06)
     assert hi == pytest.approx(1.4, abs=0.06)
+
+
+@pytest.mark.parametrize("flip", [1.0, -1.0])
+def test_back_profile_starts_at_the_head_end(flip):
+    """A wide chest at the neck end must land in slice 0 whichever way PCA points the axis."""
+    rng = np.random.default_rng(1)
+    x = rng.uniform(0, 1.4, 30_000)
+    half_width = np.where(x < 0.3, 0.35, 0.25)  # chest wider than the rest of the trunk
+    trunk = np.column_stack([x, rng.uniform(-1, 1, x.size) * half_width, rng.uniform(1, 1.3, x.size)])
+    neck = np.column_stack([rng.uniform(-0.6, 0, 3_000), rng.uniform(-0.08, 0.08, 3_000), rng.uniform(0.9, 1.1, 3_000)])
+    tail = np.column_stack([rng.uniform(1.4, 1.5, 300), rng.uniform(-0.05, 0.05, 300), rng.uniform(1.0, 1.2, 300)])
+    body = np.vstack([trunk, neck, tail]) * np.array([flip, 1.0, 1.0])
+    lo, hi = trunk_interval(body)
+    profile = trunk_profile(body, lo, hi)
+    assert profile["profile_width_0"] > profile["profile_width_9"] + 0.15
 
 
 def test_animal_features_combine_all_views(side_scene, top_scene):

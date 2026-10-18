@@ -23,18 +23,24 @@ Two public herds captured with the same three-Kinect setup:
 
 | herd | animals | weight | 3-D ensemble MAE | manual tape model MAE | MAPE |
 |---|---|---|---|---|---|
-| CowDatabase2, Black Angus | 94 | 556–746 kg | 21.4 kg [18.1, 25.0] | 22.6 kg | 3.47 % |
-| CowDatabase, Hereford | 101 | 243–605 kg | 17.5 kg [14.5, 21.0] | 22.1 kg | 4.02 % |
+| CowDatabase2, Black Angus | 94 | 556–746 kg | 20.7 kg [17.6, 24.2] | 22.6 kg | 3.34 % |
+| CowDatabase, Hereford | 101 | 243–605 kg | 16.1 kg [13.3, 19.4] | 22.1 kg | 3.70 % |
 
 Nested 5-fold CV × 5 seeds, one row per animal, bootstrap CIs over animals.
+The model includes a 10-slice back profile from the top view. That feature
+set was chosen after comparing eight variants on these same animals, so its
+gain (about 1.4 kg on Hereford, 0.7 kg on Black Angus) is exploratory, not
+pre-registered.
 
 - **Transfer to a new herd without calibration fails, and the failure is bias**
-  (|bias|/MAE 0.8–1.0). With 20–30 reference weighings and a slope+intercept
-  correction, the average error comes back to within 1 MAPE point of training
-  on the herd itself (58–90 % of random reference sets meet that margin).
-- **3-D versus manual measurements**: better on the Hereford herd by 4.6 kg
-  (bootstrap CI [0.6, 8.7], Wilcoxon p = 0.016, Holm-adjusted p = 0.063); no
-  claimable difference on the narrow-range Black Angus herd.
+  for the deployable ensemble (|bias|/MAE 0.88–1.00). With 20–30 reference
+  weighings and a slope+intercept correction, the average error comes back to
+  within 1 MAPE point of training on the herd itself (90–99 % of random
+  reference sets meet that margin).
+- **3-D versus manual measurements**: better on the Hereford herd by 6.0 kg
+  (bootstrap CI [2.2, 9.9], Wilcoxon p = 0.005, Holm-adjusted p = 0.019,
+  exploratory because of the feature selection above); no claimable
+  difference on the narrow-range Black Angus herd.
 - **The public CowDatabase release mislabels files 22–87** (cloud file N is not
   table row N there). The join was re-derived from heights only; see
   `reports/cowdb1_join_audit.md`. Weight–volume correlation goes from 0.60 to 0.94.

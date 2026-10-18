@@ -18,6 +18,8 @@ N_SLICES = 64
 _LO, _HI = 2.0, 98.0
 TRUNK_REL_WIDTH = 0.65
 MID_TRUNK = (0.2, 0.8)  # share of the trunk used for the mid-trunk features
+N_PROFILE = 10  # slices of the back profile, shoulder to rump
+_MIN_PROFILE_POINTS = 30
 
 
 def _slices(along: np.ndarray, n: int = N_SLICES) -> tuple[np.ndarray, float]:
@@ -106,6 +108,29 @@ def trunk_interval(body: np.ndarray, n_slices: int = N_SLICES, rel_width: float 
     return float(edges[best_start]), float(edges[best_start + best_len])
 
 
+def trunk_profile(body: np.ndarray, lo: float, hi: float, n: int = N_PROFILE) -> dict[str, float]:
+    """Cross-section area, width and back height in ``n`` slices of the trunk.
+
+    Slice 0 is at the shoulders. The body axis from PCA has no head or tail,
+    so the head end is taken as the one that sticks out further beyond the
+    trunk (head and neck are longer than the tail stub). The chest, which tape
+    measurement captures as heart girth, then lands in the first slices.
+    """
+    along = body[:, 0]
+    beyond_lo = lo - np.percentile(along, 0.5)
+    beyond_hi = np.percentile(along, 99.5) - hi
+    pos = (hi - along) / (hi - lo) if beyond_hi >= beyond_lo else (along - lo) / (hi - lo)
+    out: dict[str, float] = {}
+    for k in range(n):
+        part = body[(pos >= k / n) & (pos < (k + 1) / n)]
+        if part.shape[0] < _MIN_PROFILE_POINTS:
+            raise ValueError(f"top: back-profile slice {k} has only {part.shape[0]} points")
+        out[f"profile_area_{k}"] = cross_section_volume(part, n_slices=4) / max(float(np.ptp(part[:, 0])), 1e-6)
+        out[f"profile_width_{k}"] = float(np.subtract(*np.percentile(part[:, 1], [_HI, _LO])))
+        out[f"profile_height_{k}"] = float(np.percentile(part[:, 2], 95))
+    return out
+
+
 def _central(body: np.ndarray, keep: float = 0.5) -> np.ndarray:
     lo, hi = np.percentile(body[:, 0], [50 * (1 - keep), 100 - 50 * (1 - keep)])
     return body[(body[:, 0] >= lo) & (body[:, 0] <= hi)]
@@ -142,6 +167,7 @@ def view_features(seg: SegmentedView) -> dict[str, float]:
         feats["mid_cs_area"] = cross_section_volume(mid) / max(b - a, 1e-6)
         feats["mid_width"] = float(np.subtract(*np.percentile(mid[:, 1], [_HI, _LO])))
         feats["mid_height"] = float(np.percentile(mid[:, 2], 95))
+        feats.update(trunk_profile(body, lo, hi))
     else:
         feats["side_area"] = profile_area(body, value_axis=2)
         mid = _central(body)

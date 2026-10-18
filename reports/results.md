@@ -13,9 +13,9 @@ Protocol: one row per animal; 5-fold cross-validation repeated with 5 seeds; Lig
 | predict-mean | 26.2 [22.1, 30.5] | 0.14 | 4.22 | 33.4 | 58 | 133 | -0.03 |
 | manual measurements (robust linear) | 22.6 [19.4, 26.0] | 0.28 | 3.64 | 28.0 | 46 | 100 | 0.28 |
 | physics: a·volume + b | 24.3 [21.0, 27.9] | 0.17 | 3.93 | 29.9 | 52 | 95 | 0.18 |
-| 3-D robust linear | 21.1 [17.9, 24.6] | 0.37 | 3.42 | 26.8 | 48 | 86 | 0.34 |
-| 3-D LightGBM (nested tuning) | 21.2 [17.6, 25.2] | 0.77 | 3.43 | 28.4 | 58 | 93 | 0.26 |
-| 3-D ensemble (deployable) | 21.4 [18.1, 25.0] | 0.33 | 3.47 | 27.3 | 49 | 85 | 0.31 |
+| 3-D robust linear | 20.6 [17.3, 24.1] | 0.52 | 3.32 | 26.4 | 49 | 80 | 0.36 |
+| 3-D LightGBM (nested tuning) | 21.0 [17.7, 24.6] | 0.71 | 3.39 | 27.2 | 51 | 90 | 0.31 |
+| 3-D ensemble (deployable) | 20.7 [17.6, 24.2] | 0.30 | 3.34 | 26.3 | 46 | 87 | 0.36 |
 
 ### CowDatabase (Hereford): n = 101, weight 243–605 kg, SD 72.2 kg
 
@@ -24,9 +24,9 @@ Protocol: one row per animal; 5-fold cross-validation repeated with 5 seeds; Lig
 | predict-mean | 58.6 [50.4, 67.0] | 0.10 | 13.99 | 72.6 | 137 | 204 | -0.02 |
 | manual measurements (robust linear) | 22.1 [18.6, 25.8] | 0.12 | 5.12 | 28.9 | 55 | 108 | 0.84 |
 | physics: a·volume + b | 19.1 [16.1, 22.6] | 0.12 | 4.35 | 25.5 | 43 | 115 | 0.87 |
-| 3-D robust linear | 18.0 [15.0, 21.5] | 0.26 | 4.15 | 24.8 | 44 | 117 | 0.88 |
-| 3-D LightGBM (nested tuning) | 19.1 [15.7, 23.1] | 0.79 | 4.50 | 26.9 | 48 | 140 | 0.86 |
-| 3-D ensemble (deployable) | 17.5 [14.5, 21.0] | 0.27 | 4.02 | 24.2 | 42 | 124 | 0.89 |
+| 3-D robust linear | 15.1 [12.4, 18.3] | 0.33 | 3.47 | 21.4 | 34 | 124 | 0.91 |
+| 3-D LightGBM (nested tuning) | 19.3 [16.0, 22.9] | 0.87 | 4.52 | 26.2 | 46 | 127 | 0.87 |
+| 3-D ensemble (deployable) | 16.1 [13.3, 19.4] | 0.30 | 3.70 | 22.3 | 39 | 122 | 0.90 |
 
 ## H1 (supporting): 3-D volume versus manual measurements
 
@@ -34,12 +34,12 @@ Difference = MAE(second) − MAE(first) in kg. Positive means the first model is
 
 | herd | comparison | ΔMAE kg [95% CI] | Wilcoxon p | Holm p | verdict |
 |---|---|---|---|---|---|
-| CowDatabase2 (Black Angus) | ensemble vs manual | +1.15 [-1.70, +3.99] | 0.3605 | 0.5701 | no claimable difference |
-| CowDatabase2 (Black Angus) | physics vs manual | -1.73 [-4.85, +1.33] | 0.2850 | 0.5701 | no claimable difference |
-| CowDatabase2 (Black Angus) | ensemble vs physics | +2.88 [+1.19, +4.48] | 0.0005 | 0.0029 | first is better |
-| CowDatabase (Hereford) | ensemble vs manual | +4.64 [+0.60, +8.68] | 0.0156 | 0.0626 | first is better |
+| CowDatabase2 (Black Angus) | ensemble vs manual | +1.90 [-0.93, +4.68] | 0.1705 | 0.3709 | no claimable difference |
+| CowDatabase2 (Black Angus) | physics vs manual | -1.73 [-4.85, +1.33] | 0.2850 | 0.3709 | no claimable difference |
+| CowDatabase2 (Black Angus) | ensemble vs physics | +3.62 [+1.74, +5.46] | 0.0004 | 0.0022 | first is better |
+| CowDatabase (Hereford) | ensemble vs manual | +6.02 [+2.17, +9.91] | 0.0047 | 0.0190 | first is better |
 | CowDatabase (Hereford) | physics vs manual | +2.98 [-1.14, +7.08] | 0.1236 | 0.3709 | no claimable difference |
-| CowDatabase (Hereford) | ensemble vs physics | +1.66 [+0.14, +3.14] | 0.0107 | 0.0535 | first is better |
+| CowDatabase (Hereford) | ensemble vs physics | +3.04 [+1.26, +4.90] | 0.0021 | 0.0107 | first is better |
 
 ## H3 (primary): transfer between herds
 
@@ -48,11 +48,11 @@ Difference = MAE(second) − MAE(first) in kg. Positive means the first model is
 | train → test | model | MAE kg | bias kg [95% CI] | |bias| / MAE | MAPE % |
 |---|---|---|---|---|---|
 | cowdb2 → cowdb1 | physics: a·volume + b | 126.9 | +126.9 [+116.5, +137.0] | 1.00 | 31.33 |
-| cowdb2 → cowdb1 | 3-D robust linear | 60.8 | +57.7 [+48.7, +66.7] | 0.95 | 15.63 |
-| cowdb2 → cowdb1 | 3-D ensemble (deployable) | 111.3 | +111.0 [+99.6, +122.0] | 1.00 | 27.93 |
+| cowdb2 → cowdb1 | 3-D robust linear | 46.7 | +39.1 [+30.7, +47.4] | 0.84 | 12.05 |
+| cowdb2 → cowdb1 | 3-D ensemble (deployable) | 107.4 | +107.1 [+95.9, +118.0] | 1.00 | 26.99 |
 | cowdb1 → cowdb2 | physics: a·volume + b | 42.9 | -36.6 [-45.4, -28.0] | 0.85 | 6.94 |
-| cowdb1 → cowdb2 | 3-D robust linear | 41.9 | -33.5 [-42.1, -25.1] | 0.80 | 6.78 |
-| cowdb1 → cowdb2 | 3-D ensemble (deployable) | 53.8 | -52.4 [-60.4, -44.6] | 0.97 | 8.64 |
+| cowdb1 → cowdb2 | 3-D robust linear | 29.5 | +5.9 [-1.9, +13.3] | 0.20 | 4.83 |
+| cowdb1 → cowdb2 | 3-D ensemble (deployable) | 35.6 | -31.3 [-38.4, -24.7] | 0.88 | 5.71 |
 
 H3a is supported for a model when the bias CI excludes 0 and |bias|/MAE ≥ 0.5.
 
@@ -62,37 +62,37 @@ Ensemble trained on the source herd, corrected on k random target animals, score
 
 | train → test | correction | k | MAE kg [95% range] | MAPE % [95% range] | within-herd MAPE % | excess MAPE (mean) | mean within margin | draws within margin |
 |---|---|---|---|---|---|---|---|---|
-| cowdb2 → cowdb1 | intercept | 5 | 51.1 [45.9, 66.7] | 12.12 [10.60, 16.00] | 4.02 | +8.10 | no | 0 % |
-| cowdb2 → cowdb1 | intercept | 10 | 49.4 [45.3, 58.8] | 11.75 [10.31, 14.57] | 4.02 | +7.73 | no | 0 % |
-| cowdb2 → cowdb1 | intercept | 20 | 48.2 [43.8, 53.8] | 11.47 [9.95, 13.63] | 4.02 | +7.45 | no | 0 % |
-| cowdb2 → cowdb1 | intercept | 30 | 47.9 [42.8, 53.4] | 11.38 [9.75, 13.44] | 4.02 | +7.37 | no | 0 % |
-| cowdb2 → cowdb1 | intercept+slope | 5 | 26.9 [20.2, 52.9] | 6.30 [4.65, 12.78] | 4.02 | +2.28 | no | 27 % |
-| cowdb2 → cowdb1 | intercept+slope | 10 | 23.1 [19.5, 33.6] | 5.37 [4.49, 7.75] | 4.02 | +1.36 | no | 45 % |
-| cowdb2 → cowdb1 | intercept+slope | 20 | 21.6 [18.9, 25.3] | 4.99 [4.34, 5.97] | 4.02 | +0.97 | yes | 58 % |
-| cowdb2 → cowdb1 | intercept+slope | 30 | 21.1 [18.4, 24.0] | 4.90 [4.24, 5.63] | 4.02 | +0.88 | yes | 64 % |
-| cowdb1 → cowdb2 | intercept | 5 | 34.1 [30.4, 46.8] | 5.59 [4.98, 7.74] | 3.47 | +2.12 | no | 0 % |
-| cowdb1 → cowdb2 | intercept | 10 | 32.9 [30.2, 39.5] | 5.40 [4.94, 6.48] | 3.47 | +1.93 | no | 0 % |
-| cowdb1 → cowdb2 | intercept | 20 | 32.1 [29.0, 36.5] | 5.26 [4.74, 5.97] | 3.47 | +1.79 | no | 0 % |
-| cowdb1 → cowdb2 | intercept | 30 | 31.7 [28.2, 35.6] | 5.20 [4.60, 5.85] | 3.47 | +1.73 | no | 1 % |
-| cowdb1 → cowdb2 | intercept+slope | 5 | 30.8 [24.3, 53.0] | 4.98 [3.91, 8.62] | 3.47 | +1.51 | no | 44 % |
-| cowdb1 → cowdb2 | intercept+slope | 10 | 27.2 [23.8, 36.5] | 4.39 [3.83, 5.85] | 3.47 | +0.93 | yes | 71 % |
-| cowdb1 → cowdb2 | intercept+slope | 20 | 25.8 [23.3, 29.4] | 4.18 [3.74, 4.79] | 3.47 | +0.71 | yes | 86 % |
-| cowdb1 → cowdb2 | intercept+slope | 30 | 25.5 [22.7, 29.4] | 4.13 [3.68, 4.80] | 3.47 | +0.66 | yes | 90 % |
+| cowdb2 → cowdb1 | intercept | 5 | 50.3 [45.3, 65.9] | 11.95 [10.40, 15.74] | 3.70 | +8.25 | no | 0 % |
+| cowdb2 → cowdb1 | intercept | 10 | 48.7 [44.8, 57.9] | 11.59 [10.18, 14.35] | 3.70 | +7.89 | no | 0 % |
+| cowdb2 → cowdb1 | intercept | 20 | 47.5 [43.2, 53.1] | 11.31 [9.84, 13.44] | 3.70 | +7.61 | no | 0 % |
+| cowdb2 → cowdb1 | intercept | 30 | 47.2 [42.3, 52.7] | 11.23 [9.62, 13.26] | 3.70 | +7.53 | no | 0 % |
+| cowdb2 → cowdb1 | intercept+slope | 5 | 22.1 [16.5, 45.7] | 5.17 [3.84, 10.84] | 3.70 | +1.47 | no | 57 % |
+| cowdb2 → cowdb1 | intercept+slope | 10 | 18.8 [16.1, 29.2] | 4.37 [3.72, 6.60] | 3.70 | +0.67 | yes | 81 % |
+| cowdb2 → cowdb1 | intercept+slope | 20 | 17.6 [15.7, 21.3] | 4.08 [3.64, 4.84] | 3.70 | +0.38 | yes | 96 % |
+| cowdb2 → cowdb1 | intercept+slope | 30 | 17.3 [15.2, 19.9] | 4.01 [3.48, 4.57] | 3.70 | +0.31 | yes | 99 % |
+| cowdb1 → cowdb2 | intercept | 5 | 29.4 [26.2, 39.4] | 4.81 [4.29, 6.49] | 3.34 | +1.47 | no | 6 % |
+| cowdb1 → cowdb2 | intercept | 10 | 28.4 [26.0, 34.3] | 4.65 [4.26, 5.59] | 3.34 | +1.31 | no | 8 % |
+| cowdb1 → cowdb2 | intercept | 20 | 27.7 [25.1, 31.1] | 4.53 [4.11, 5.07] | 3.34 | +1.18 | no | 26 % |
+| cowdb1 → cowdb2 | intercept | 30 | 27.4 [24.5, 30.6] | 4.48 [3.99, 5.01] | 3.34 | +1.14 | no | 29 % |
+| cowdb1 → cowdb2 | intercept+slope | 5 | 29.6 [23.2, 51.6] | 4.79 [3.77, 8.33] | 3.34 | +1.44 | no | 51 % |
+| cowdb1 → cowdb2 | intercept+slope | 10 | 26.0 [22.8, 35.2] | 4.21 [3.71, 5.70] | 3.34 | +0.87 | yes | 76 % |
+| cowdb1 → cowdb2 | intercept+slope | 20 | 24.7 [22.4, 28.4] | 4.01 [3.61, 4.57] | 3.34 | +0.67 | yes | 90 % |
+| cowdb1 → cowdb2 | intercept+slope | 30 | 24.5 [21.6, 28.2] | 3.97 [3.50, 4.57] | 3.34 | +0.63 | yes | 92 % |
 
 ### H3c: physics model versus ensemble after transfer
 
 | train → test | ΔMAE kg (ensemble − physics) [95% CI] | Wilcoxon p | Holm p | verdict |
 |---|---|---|---|---|
-| cowdb2 → cowdb1 | -15.6 [-17.0, -14.0] | 1.282e-17 | 2.564e-17 | ensemble better |
-| cowdb1 → cowdb2 | +10.9 [+7.7, +14.1] | 5.61e-09 | 5.61e-09 | physics better |
+| cowdb2 → cowdb1 | -19.5 [-20.8, -18.1] | 4.17e-18 | 8.341e-18 | ensemble better |
+| cowdb1 → cowdb2 | -7.3 [-10.6, -4.1] | 1.761e-05 | 1.761e-05 | ensemble better |
 
 ### H3d: both herds pooled (grouped CV, scored per herd)
 
 | scored on | n | MAE kg | MAPE % | bias kg | max |err| | R² |
 |---|---|---|---|---|---|---|
-| CowDatabase2 (Black Angus) | 94 | 25.8 | 4.19 | -9.3 | 119 | -0.04 |
-| CowDatabase (Hereford) | 101 | 18.6 | 4.41 | +5.2 | 125 | 0.87 |
-| both | 195 | 22.1 | 4.30 | -1.8 | 125 | 0.91 |
+| CowDatabase2 (Black Angus) | 94 | 25.8 | 4.18 | -8.8 | 133 | -0.01 |
+| CowDatabase (Hereford) | 101 | 16.4 | 3.87 | +4.4 | 121 | 0.90 |
+| both | 195 | 20.9 | 4.02 | -2.0 | 133 | 0.92 |
 
 ## H4: 90% conformal intervals
 
@@ -100,8 +100,8 @@ Calibrated on 30 random animals (within herd) or on the 20 reference animals aft
 
 | setting | coverage [95% range] | half-width kg |
 |---|---|---|
-| within CowDatabase2 (Black Angus) | 0.902 [0.750, 1.000] | 44.6 |
-| within CowDatabase (Hereford) | 0.900 [0.753, 1.000] | 36.5 |
-| cowdb2 → cowdb1, k = 20 | 0.885 [0.691, 0.988] | 96.7 |
-| cowdb1 → cowdb2, k = 20 | 0.888 [0.709, 1.000] | 64.3 |
+| within CowDatabase2 (Black Angus) | 0.900 [0.750, 1.000] | 42.5 |
+| within CowDatabase (Hereford) | 0.900 [0.732, 1.000] | 33.3 |
+| cowdb2 → cowdb1, k = 20 | 0.885 [0.691, 0.988] | 95.1 |
+| cowdb1 → cowdb2, k = 20 | 0.890 [0.709, 1.000] | 53.5 |
 

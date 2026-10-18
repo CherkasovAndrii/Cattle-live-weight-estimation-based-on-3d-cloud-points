@@ -17,6 +17,8 @@ from sklearn.model_selection import GridSearchCV, KFold
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from cattle3d.features.geometry_features import N_PROFILE
+
 # The single feature of the physics model: mass is close to proportional to
 # trunk volume. Two parameters, so it extrapolates linearly.
 PHYSICS_FEATURE = "top_trunk_cs_volume"
@@ -39,6 +41,12 @@ VOLUME_FEATURES = (
     "side_mean_mid_side_area",
     "side_mean_mid_height",
     "side_max_length",
+) + tuple(
+    # Back profile in 10 trunk slices (exploratory: chosen after comparing 8
+    # variants on the same data, see results/improvement_headroom.md).
+    f"top_profile_{kind}_{k}"
+    for kind in ("area", "width", "height")
+    for k in range(N_PROFILE)
 )
 
 # A factory builds a fresh, unfitted estimator for a given random seed.

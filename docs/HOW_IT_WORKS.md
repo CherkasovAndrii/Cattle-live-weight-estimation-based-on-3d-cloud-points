@@ -78,6 +78,11 @@ under the back, not the true body volume (it includes the space between the
 legs), which is why the model learns `weight ≈ a·V + b` rather than using a
 density.
 
+The top view also gives a **back profile**: the trunk is cut into 10 equal
+parts from the head end, and each part contributes its mean cross-section
+area, width and height (30 features). Together with the volume, areas and
+heights this makes 44 features for the model.
+
 ## 6. Does the signal carry weight?
 
 ![feature vs weight](../reports/figures/thesis/en/06_feature_vs_weight.png)
@@ -117,34 +122,40 @@ within-herd MAPE + 1 point.
 
 ![within herd](../reports/figures/thesis/en/09_within_herd_oof.png)
 
-Out-of-fold predictions. Hereford: 3-D MAE 17.5 kg against 22.1 kg for tape
-measurements. Black Angus: 21.4 kg against 22.6 kg, no claimable difference.
+Out-of-fold predictions. Hereford: 3-D MAE 16.1 kg against 22.1 kg for tape
+measurements (Holm p = 0.019). Black Angus: 20.7 kg against 22.6 kg, no
+claimable difference. These numbers include the 10-slice back profile, which
+was picked after comparing eight feature variants on the same animals
+(`improvement_headroom.md`); without it the MAEs were 17.5 and 21.4 kg, so the
+thesis should report the profile's gain as exploratory.
 The Angus predictions are squeezed towards the herd mean (regression to the
 mean on a narrow, noisy herd).
 
 ![intervals](../reports/figures/thesis/en/10_prediction_intervals.png)
 
-Every animal's 90 % conformal interval: ±45 kg (Angus) and ±36 kg (Hereford);
+Every animal's 90 % conformal interval: ±42 kg (Angus) and ±30 kg (Hereford);
 8 of 94 and 9 of 101 animals fall outside. This picture uses one threshold for
 the whole herd, so about 10 % misses is expected by construction; the honest
 check is in `reports/results.md` (H4): calibrated on 30 animals and scored on
 the rest, coverage is 0.90 on both herds. The deployable model, trained on
-both herds, carries ±46.7 kg. After transfer with 20 reference animals the
-interval widens to ±64–97 kg, which is the price of a new herd.
+both herds, carries ±42.3 kg. After transfer with 20 reference animals the
+interval widens to ±54–95 kg, which is the price of a new herd.
 
 ![zero shot](../reports/figures/thesis/en/11_zero_shot_transfer.png)
 
-A model moved to the other herd unchanged is mostly off by a shift
-(+111 kg Angus → Hereford, −52 kg back; the shift is 80–100 % of the error).
+The ensemble moved to the other herd unchanged is mostly off by a shift
+(+107 kg Angus → Hereford, −31 kg back; the shift is 88–100 % of the error).
 Going from the heavy Angus herd to the lighter Hereford herd the slope is also
-flattened: predictions only span about 510–610 kg. Both are fixable with a few
+flattened: predictions only span about 510–590 kg. The robust linear model
+moved from Hereford to Angus happens to have no significant shift (+6 kg,
+CI −2 to +13), but its scatter is larger than after recalibration. Both are fixable with a few
 weighings, which is the point of H3.
 
 ![recalibration](../reports/figures/thesis/en/12_recalibration_curve.png)
 
 Fixing it: with a slope + intercept correction from 20 weighed animals the
-error comes within 1 MAPE point of training on the herd itself (58 % and 86 %
-of random reference sets meet the margin at k = 20; 64 % and 90 % at k = 30).
+error comes within 1 MAPE point of training on the herd itself (96 % and 90 %
+of random reference sets meet the margin at k = 20; 99 % and 92 % at k = 30).
 An intercept-only correction is not enough, because the herds differ in slope
 too. Practical reading: **a new farm weighs 20–30 animals once.**
 
