@@ -35,3 +35,4 @@ pythonpath = ["src"]
 
 [tool.setuptools.package-data]
 "cattle3d.resources" = ["*.csv"]
+"cattle3d.web" = ["static/*", "static/img/*"]

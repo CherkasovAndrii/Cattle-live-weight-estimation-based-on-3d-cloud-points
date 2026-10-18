@@ -26,6 +26,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
@@ -35,6 +36,7 @@ from cattle3d.api.store import Calibration, DuplicateError, Scan, Store
 from cattle3d.io.ply import PlyFormatError, parse_organized_cloud
 from cattle3d.modeling.weight_model import WeightModel
 from cattle3d.types import OrganizedCloud, View
+from cattle3d.web import SITE_DIR
 
 # A dense Kinect v2 frame with colour is about 3.5 MB; anything far above that
 # is not one of our clouds.
@@ -126,9 +128,16 @@ async def _read_cloud(upload: UploadFile, view: View) -> OrganizedCloud:
 
 
 # ---- app ------------------------------------------------------------------------------
-def create_app(service: WeightService, api_key: str | None = None) -> FastAPI:
+def create_app(
+    service: WeightService,
+    api_key: str | None = None,
+    site_dir: Path | None = None,
+    figures_dir: Path | None = None,
+) -> FastAPI:
     """Build the app around a service. With ``api_key`` set, every /v1 route
-    requires the ``X-API-Key`` header."""
+    requires the ``X-API-Key`` header. ``site_dir`` is served at ``/`` (the
+    presentation website) and ``figures_dir`` at ``/figures`` (thesis figures,
+    ``{uk,en}/NN_name.png``); both are optional and public."""
     app = FastAPI(
         title="cattle3d weight API",
         version=__version__,
@@ -220,8 +229,17 @@ def create_app(service: WeightService, api_key: str | None = None) -> FastAPI:
     def animal_history(herd_id: int, animal_tag: str) -> list[ScanOut]:
         return [_scan(s) for s in service.animal_history(herd_id, animal_tag)]
 
+    # Mounted last so the API routes above take precedence over "/".
+    if figures_dir is not None and Path(figures_dir).is_dir():
+        app.mount("/figures", StaticFiles(directory=figures_dir), name="figures")
+    if site_dir is not None:
+        app.mount("/", StaticFiles(directory=site_dir, html=True), name="site")
     return app
 
 
-def app_from_files(model_path: Path, db_path: Path, api_key: str | None = None) -> FastAPI:
-    return create_app(WeightService(WeightModel.load(model_path), Store(db_path)), api_key)
+def app_from_files(
+    model_path: Path, db_path: Path, api_key: str | None = None, figures_dir: Path | None = None,
+    site: bool = True,
+) -> FastAPI:
+    service = WeightService(WeightModel.load(model_path), Store(db_path))
+    return create_app(service, api_key, SITE_DIR if site else None, figures_dir)

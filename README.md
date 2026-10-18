@@ -119,6 +119,11 @@ cattle3d serve            # http://127.0.0.1:8000/docs
 Herds, scans, scale weighings, per-herd calibration and drift checks over
 HTTP, stored in SQLite. See [`docs/API.md`](docs/API.md).
 
+The same server shows the presentation website at `/`, in Ukrainian and
+English: the method, results, limits, the farm workflow, and a live demo that
+weighs uploaded PLY files through the API. Thesis figures come from
+`reports/figures/thesis/` (`--figures` to change; `--no-site` for the API only).
+
 ### From Python
 
 ```python
@@ -148,6 +153,7 @@ src/cattle3d/
   modeling/weight_model.py deployable artifact: interval, range check, herd calibration
   modeling/calibration.py  herd correction, its interval, drift check
   api/                     SQLite store, farm service, FastAPI app (docs/API.md)
+  web/static/              presentation website served at / (uk/en, live demo)
   evaluation/              metrics and bootstrap, CV and transfer, study, report
   figures/                 thesis schemes and figures (uk/en) drawn from the code itself
   cli.py                   thin command-line adapter

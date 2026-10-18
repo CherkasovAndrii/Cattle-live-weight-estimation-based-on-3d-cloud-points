@@ -9,7 +9,7 @@ Owns: argument parsing, paths and printing. No business logic lives here.
     cattle3d calibrate   --herd NAME --reference ref.csv       -> stores a herd correction in the model
     cattle3d predict     --left L.ply --right R.ply --top T.ply [--herd NAME]  -> JSON
     cattle3d figures     [--cowdb2 PATH --cowdb1 PATH]               -> reports/figures/thesis/{uk,en}/
-    cattle3d serve       [--db data/farm.sqlite3 --port 8000]        -> REST API (needs the [api] extra)
+    cattle3d serve       [--db data/farm.sqlite3 --port 8000]        -> REST API + website at / (needs the [api] extra)
 """
 
 from __future__ import annotations
@@ -187,7 +187,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     api_key = os.environ.get("CATTLE3D_API_KEY")
     if not api_key and args.host not in ("127.0.0.1", "localhost"):
         sys.exit("set CATTLE3D_API_KEY before serving beyond localhost")
-    app = app_from_files(Path(args.model), Path(args.db), api_key)
+    app = app_from_files(Path(args.model), Path(args.db), api_key, Path(args.figures), site=not args.no_site)
     uvicorn.run(app, host=args.host, port=args.port)
 
 
@@ -253,6 +253,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--db", default="data/farm.sqlite3", help="SQLite file for herds, scans and calibrations")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--figures", default=str(REPORTS / "figures" / "thesis"), help="thesis figures shown on the website")
+    p.add_argument("--no-site", action="store_true", help="serve the API only, without the website at /")
     p.set_defaults(func=cmd_serve)
     return parser
 

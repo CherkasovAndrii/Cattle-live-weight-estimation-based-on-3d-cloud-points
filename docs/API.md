@@ -11,6 +11,10 @@ cattle3d serve                                   # http://127.0.0.1:8000, docs a
 CATTLE3D_API_KEY=... cattle3d serve --host 0.0.0.0 --db /srv/farm.sqlite3
 ```
 
+The presentation website is served at `/` and the thesis figures at
+`/figures/{uk,en}/` (both public; `--no-site` turns the site off). Its live
+demo calls this API and asks for the key when one is set.
+
 Serving beyond localhost requires `CATTLE3D_API_KEY`. Every `/v1` route then
 needs the `X-API-Key` header. Herds, scans, weighings and calibrations are
 kept in one SQLite file. The model artifact is never modified by the API.

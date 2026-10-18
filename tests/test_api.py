@@ -229,3 +229,19 @@ def test_cloud_fixture_is_segmentable(side_scene_module, top_scene_module):
     clouds = {View.LEFT: OrganizedCloud(side_scene_module), View.RIGHT: OrganizedCloud(side_scene_module),
               View.TOP: OrganizedCloud(top_scene_module)}
     assert PHYSICS_FEATURE in features_from_clouds(clouds)
+
+
+def test_website_is_served_at_the_root_without_hiding_the_api(model, tmp_path, table):
+    from cattle3d.web import SITE_DIR
+
+    figures = tmp_path / "figures" / "uk"
+    figures.mkdir(parents=True)
+    (figures / "09_within_herd_oof.png").write_bytes(b"\x89PNG")
+    service = WeightService(model, Store(tmp_path / "farm.sqlite3"), RowsByTag(table))
+    c = TestClient(create_app(service, api_key=KEY, site_dir=SITE_DIR, figures_dir=tmp_path / "figures"))
+    page = c.get("/")
+    assert page.status_code == 200 and "<title>Cattle3D Live Weight</title>" in page.text
+    assert c.get("/site.js").status_code == 200
+    assert c.get("/figures/uk/09_within_herd_oof.png").content == b"\x89PNG"
+    assert c.get("/health").json()["status"] == "ok"
+    assert c.get("/v1/herds").status_code == 401  # the site does not open the API
