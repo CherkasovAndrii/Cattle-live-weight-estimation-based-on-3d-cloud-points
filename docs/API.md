@@ -46,7 +46,7 @@ kept in one SQLite file. The model artifact is never modified by the API.
 
 | field | meaning |
 |---|---|
-| `status` | `trusted`: use the weight. `flagged`: a weight is returned, but `reasons` says why it is outside the validated range (herd not calibrated, body volume outside the training range, too few points in a view). `refused`: no weight; rescan. |
+| `status` | `trusted`: use the weight. `flagged`: a weight is returned, but `reasons` says why it is outside the validated range (herd not calibrated, body volume outside the training range, too few points in a view, the three views may not show the same animal). `refused`: no weight; rescan (no animal or floor in a view, or the three views contradict each other). |
 | `weight_kg`, `lower_kg`, `upper_kg` | herd-corrected weight and its 90 % interval |
 | `raw_weight_kg` | model output before the herd correction (kept so the herd can be recalibrated without re-processing clouds) |
 | `calibration_id` | which herd correction was applied |
@@ -105,6 +105,30 @@ holds for the herd. A small translation-only alignment on the overlapping
 upper flanks absorbs cameras that moved a few centimetres. Without a
 calibration only the top view is shown. The weight never depends on it: every
 feature is computed inside one view.
+
+### Same-animal check
+
+With a station calibration the service also checks that the three clouds show
+one animal; mixing up files from different animals or slots is the most likely
+operator error, and without this check it still produced a confident weight.
+After merging, it measures the share of each side view's body (points above
+0.5 m) that falls inside the top view's footprint, the median height gap
+between each side view's and the top view's back line, and how far the
+alignment had to shift a side view.
+
+| result | when | thresholds |
+|---|---|---|
+| `flagged`, reason "the three views do not seem to show the same animal" | any check outside what genuine scans show | footprint share < 0.70, back gap > 0.15 m, or shift > 0.18 m |
+| `refused`, "rescan: the three views contradict each other" | far beyond any genuine scan | footprint share < 0.40 or back gap > 0.25 m |
+
+On the 195 animals of the two public herds (station calibration as the demo
+uses it), 2.6 % of genuine scans are flagged, while 72 % of scans with one view
+taken from another animal of the same herd and 81 % of scans with three
+different animals are caught (flagged or refused). These rates are in-sample
+and therefore optimistic; animals of similar size and build can pass. Without a
+station calibration (a new farm in the demo) there is no check. The preview
+reports the numbers as `view_agreement`
+(`same_animal`, `footprint_share`, `back_gap_m`, `shift_m`).
 
 `cattle3d demo` adds three read-only routes for the defence demo:
 `GET /v1/demo` (demo farms and the held-out sample cows),

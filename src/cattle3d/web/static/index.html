@@ -5,11 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Cattle3D Live Weight</title>
 <meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#05060f">
 <meta name="description" content="Non-contact live weight of cattle from left, right and top depth point clouds">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Unbounded:wght@400;600;800&display=swap">
 <link rel="stylesheet" href="site.css">
+<script>document.documentElement.classList.add("js")</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%273%27 fill=%27%231d6a86%27/%3E%3Ctext x=%278%27 y=%2712%27 font-size=%2710%27 text-anchor=%27middle%27 fill=%27white%27 font-family=%27monospace%27%3E3d%3C/text%3E%3C/svg%3E">
 </head>
 <body>
@@ -35,31 +37,222 @@
 <main id="top">
 
 <!-- ===== Hero ===== -->
-<section class="hero wrap">
-  <div class="hero-text">
+<section class="hero">
+  <div class="hero-stage" id="stage">
+    <div class="eclipse" aria-hidden="true"><i class="corona"></i><i class="ring"></i><i class="disc"></i></div>
+    <canvas id="cow3d" data-src="img/cow70_points.bin" role="img"
+      aria-label="Тривимірна хмара точок корови з трьох камер глибини / A 3-D point cloud of a cow from three depth cameras"></canvas>
+    <span class="cam-tag" data-cam="left"><i></i><span lang="uk">ліва камера</span><span lang="en">left camera</span></span>
+    <span class="cam-tag" data-cam="right"><i></i><span lang="uk">права камера</span><span lang="en">right camera</span></span>
+    <span class="cam-tag" data-cam="top"><i></i><span lang="uk">верхня камера</span><span lang="en">top camera</span></span>
+    <div class="hud" aria-hidden="true">
+      <span class="hud-k">CowDatabase2 · № 70</span>
+      <span class="hud-w"><b data-count="602">602</b> <span lang="uk">кг</span><span lang="en">kg</span></span>
+      <span class="hud-k">90 %: 558–646 · <span lang="uk">ваги</span><span lang="en">scale</span> 611</span>
+    </div>
+    <p class="drag-hint"><span lang="uk">Перетягніть, щоб обернути</span><span lang="en">Drag to turn</span></p>
+  </div>
+
+  <div class="hero-text wrap">
     <p class="eyebrow"><span lang="uk">Магістерська робота · ХНУРЕ · 2026</span><span lang="en">Master's thesis · NURE, Kharkiv · 2026</span></p>
     <h1>
-      <span lang="uk">Жива маса корови з трьох камер глибини</span>
-      <span lang="en">A cow's live weight from three depth cameras</span>
+      <span lang="uk">Жива маса корови <em>з трьох камер глибини</em></span>
+      <span lang="en">A cow's live weight <em>from three depth cameras</em></span>
     </h1>
     <p class="lead">
       <span lang="uk">Ліва, права та верхня хмари точок Kinect v2 перетворюються на об’єм тулуба й профіль спини, а модель видає масу, 90&nbsp;% інтервал і рішення: довіряти, позначити або відмовити.</span>
       <span lang="en">Left, right and top Kinect v2 point clouds become a trunk volume and a back profile. The model returns a weight, a 90&nbsp;% interval and a decision: trust it, flag it, or refuse and ask for a rescan.</span>
     </p>
-    <dl class="kpis">
+    <div class="cta">
+      <a class="btn primary" href="/app/"><span lang="uk">Зважити корову</span><span lang="en">Weigh a cow</span><span aria-hidden="true">→</span></a>
+      <a class="btn" href="#how"><span lang="uk">Як це працює</span><span lang="en">How it works</span></a>
+    </div>
+    <dl class="kpis" data-reveal>
       <div><dt><span lang="uk">Герефорд, 101 тварина</span><span lang="en">Hereford, 101 animals</span></dt>
-        <dd><b>16,1</b><i lang="uk">кг MAE</i><i lang="en">kg MAE</i></dd>
+        <dd><b><span lang="uk">16,1</span><span lang="en">16.1</span></b><i lang="uk">кг MAE</i><i lang="en">kg MAE</i></dd>
         <dd class="vs"><span lang="uk">рулетка 22,1 кг</span><span lang="en">tape 22.1 kg</span></dd></div>
       <div><dt><span lang="uk">Чорна ангуська, 94</span><span lang="en">Black Angus, 94</span></dt>
-        <dd><b>20,7</b><i lang="uk">кг MAE</i><i lang="en">kg MAE</i></dd>
+        <dd><b><span lang="uk">20,7</span><span lang="en">20.7</span></b><i lang="uk">кг MAE</i><i lang="en">kg MAE</i></dd>
         <dd class="vs"><span lang="uk">рулетка 22,6 кг</span><span lang="en">tape 22.6 kg</span></dd></div>
       <div><dt><span lang="uk">Нове стадо</span><span lang="en">A new herd</span></dt>
         <dd><b>20</b><i lang="uk">зважувань</i><i lang="en">weighings</i></dd>
         <dd class="vs"><span lang="uk">для калібрування</span><span lang="en">to calibrate</span></dd></div>
     </dl>
   </div>
+</section>
 
-  <aside class="ticket" id="ticket" aria-live="polite">
+<!-- ===== How it works ===== -->
+<section id="how" class="section">
+  <div class="wrap">
+    <h2><span lang="uk">Як це працює</span><span lang="en">How it works</span></h2>
+    <ol class="steps" data-reveal>
+      <li><h3><span lang="uk">Три хмари точок</span><span lang="en">Three point clouds</span></h3>
+        <p><span lang="uk">Кожен кадр Kinect v2 має 512 × 424 точок у метрах, у системі координат камери. Точки без відбиття, яких багато на чорній шкірі, мають нульову глибину.</span><span lang="en">Each Kinect v2 frame is a 512 × 424 grid of points in metres, in the camera's own coordinates. Pixels with no return, common on black hide, have zero depth.</span></p></li>
+      <li><h3><span lang="uk">Підлога і тварина</span><span lang="en">Floor and animal</span></h3>
+        <p><span lang="uk">RANSAC знаходить площину підлоги з обмеженням нахилу. Тварина — найбільша зв’язна поверхня на висоті 0,06–2,2&nbsp;м; фрагменти, відрізані стрибком глибини, приєднуються у 3-D.</span><span lang="en">RANSAC finds the floor plane within a tilt limit. The animal is the largest connected surface 0.06–2.2&nbsp;m above it; fragments cut off by a depth jump are merged back in 3-D.</span></p></li>
+      <li><h3><span lang="uk">Система координат тіла</span><span lang="en">Body frame</span></h3>
+        <p><span lang="uk">Висота рахується від підлоги, вісь тіла береться з PCA. Нічого не нормалізується: більша корова лишається більшою.</span><span lang="en">Height is measured from the floor and the body axis comes from PCA. Nothing is normalised: a bigger cow stays bigger.</span></p></li>
+      <li><h3><span lang="uk">Об’єм і профіль спини</span><span lang="en">Volume and back profile</span></h3>
+        <p><span lang="uk">64 поперечні зрізи дають об’єм під спиною. Тулуб визначено як найдовший відрізок зрізів, ширших за 0,65 від найширшого. Профіль спини: 10 частин тулуба від голови, для кожної площа, ширина й висота. Разом 44 ознаки.</span><span lang="en">64 cross-sections give the volume under the back. The trunk is the longest run of slices wider than 0.65 of the widest. The back profile cuts the trunk into 10 parts from the head end, each with an area, width and height. 44 features in all.</span></p></li>
+      <li><h3><span lang="uk">Модель і рішення</span><span lang="en">Model and decision</span></h3>
+        <p><span lang="uk">Ансамбль фізичної моделі a·V + b, робастної лінійної та LightGBM. Конформний 90&nbsp;% інтервал, перевірка робочого діапазону та кількості точок, поправка стада.</span><span lang="en">An ensemble of a physics model a·V + b, a robust linear model and LightGBM. A conformal 90&nbsp;% interval, an operating-range and point-count check, and the herd's correction.</span></p></li>
+    </ol>
+    <figure class="fig" data-reveal>
+      <img lang="uk" src="figures/uk/03_segmentation_steps.png" alt="Етапи сегментації" loading="lazy">
+      <img lang="en" src="figures/en/03_segmentation_steps.png" alt="Segmentation steps" loading="lazy">
+      <figcaption><span lang="uk">Виділення тварини: висота над підлогою, смуга висот, зв’язні поверхні, обрана тварина.</span><span lang="en">Finding the animal: height above the floor, the height band, connected surfaces, the chosen animal.</span></figcaption>
+    </figure>
+    <figure class="fig" data-reveal>
+      <img lang="uk" src="figures/uk/05_cross_sections.png" alt="Поперечні зрізи" loading="lazy">
+      <img lang="en" src="figures/en/05_cross_sections.png" alt="Cross-sections" loading="lazy">
+      <figcaption><span lang="uk">Профіль ширини, межі тулуба і зрізи на 25, 50 та 75&nbsp;% його довжини. Об’єм включає простір між ногами, тому маса = a·V + b, без густини.</span><span lang="en">Width profile, trunk limits and slices at 25, 50 and 75&nbsp;% of its length. The volume includes the space between the legs, so weight = a·V + b, with no density.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- ===== Results ===== -->
+<section id="results" class="section"><div class="wrap">
+  <h2><span lang="uk">Результати на двох відкритих стадах</span><span lang="en">Results on two public herds</span></h2>
+  <p class="note"><span lang="uk">Вкладена 5-кратна перехресна перевірка × 5 повторів, групування за твариною, бутстреп-інтервали по тваринах, поправка Холма.</span><span lang="en">Nested 5-fold cross-validation × 5 repeats, grouped by animal, bootstrap intervals over animals, Holm correction.</span></p>
+  <div class="scroll" data-reveal>
+  <table class="results">
+    <thead><tr>
+      <th><span lang="uk">стадо</span><span lang="en">herd</span></th>
+      <th class="num">n</th>
+      <th><span lang="uk">маса, кг</span><span lang="en">weight, kg</span></th>
+      <th class="num"><span lang="uk">3-D, MAE кг</span><span lang="en">3-D, MAE kg</span></th>
+      <th class="num"><span lang="uk">рулетка, MAE кг</span><span lang="en">tape, MAE kg</span></th>
+      <th class="num">MAPE</th>
+      <th><span lang="uk">3-D проти рулетки</span><span lang="en">3-D vs tape</span></th>
+    </tr></thead>
+    <tbody>
+      <tr><td>CowDatabase <span class="muted"><span lang="uk">герефорд</span><span lang="en">Hereford</span></span></td><td class="num">101</td><td class="mono">243–605</td>
+        <td class="num"><b>16,1</b> <span class="muted">[13,3; 19,4]</span></td><td class="num">22,1</td><td class="num">3,70&nbsp;%</td>
+        <td><span class="chip ok"><span lang="uk">краще на 6,0 кг, p = 0,019*</span><span lang="en">better by 6.0 kg, p = 0.019*</span></span></td></tr>
+      <tr><td>CowDatabase2 <span class="muted"><span lang="uk">чорна ангуська</span><span lang="en">Black Angus</span></span></td><td class="num">94</td><td class="mono">556–746</td>
+        <td class="num"><b>20,7</b> <span class="muted">[17,6; 24,2]</span></td><td class="num">22,6</td><td class="num">3,34&nbsp;%</td>
+        <td><span class="chip neutral"><span lang="uk">різниця не доведена</span><span lang="en">no claimable difference</span></span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="footnote"><span lang="uk">* Профіль спини обрано після порівняння восьми варіантів на цих самих тваринах, тому перевага на герефордах є дослідницьким результатом. Без профілю: 17,5 кг, p = 0,063.</span><span lang="en">* The back profile was chosen after comparing eight variants on these same animals, so the Hereford advantage is exploratory. Without it: 17.5 kg, p = 0.063.</span></p>
+
+  <figure class="fig" data-reveal>
+    <img lang="uk" src="figures/uk/09_within_herd_oof.png" alt="Прогноз проти маси на вагах" loading="lazy">
+    <img lang="en" src="figures/en/09_within_herd_oof.png" alt="Prediction against scale weight" loading="lazy">
+    <figcaption><span lang="uk">Прогноз поза вибіркою проти маси на вагах. На вузькому за масою ангуському стаді прогнози стягуються до середнього.</span><span lang="en">Out-of-fold prediction against scale weight. On the narrow-range Angus herd predictions are pulled towards the herd mean.</span></figcaption>
+  </figure>
+
+  <div class="split" data-reveal>
+    <div class="split-text">
+      <h3><span lang="uk">Нове стадо: зсув, який знімають 20 зважувань</span><span lang="en">A new herd: a shift that 20 weighings remove</span></h3>
+      <p><span lang="uk">Модель, перенесена на інше стадо без змін, помиляється переважно на сталий зсув: +107&nbsp;кг з ангуського на герефордське стадо і −31&nbsp;кг назад. Поправка нахилу й зсуву за 20 контрольними тваринами повертає похибку в межі 1 п.п. MAPE від моделі, навченої на самому стаді, у 96&nbsp;% і 90&nbsp;% випадкових наборів.</span><span lang="en">A model moved to the other herd unchanged is off mostly by a constant shift: +107&nbsp;kg from the Angus to the Hereford herd and −31&nbsp;kg back. A slope and intercept fitted on 20 reference animals brings the error within 1 MAPE point of a model trained on that herd, in 96&nbsp;% and 90&nbsp;% of random reference sets.</span></p>
+    </div>
+    <figure class="fig" data-reveal>
+      <img lang="uk" src="figures/uk/12_recalibration_curve.png" alt="Калібрування за k зважуваннями" loading="lazy">
+      <img lang="en" src="figures/en/12_recalibration_curve.png" alt="Recalibration with k weighings" loading="lazy">
+    </figure>
+  </div>
+
+  <div class="finding glass" data-reveal>
+    <h3><span lang="uk">Знахідка в даних</span><span lang="en">A finding in the data</span></h3>
+    <p><span lang="uk">Публічний CowDatabase зіставляє файл N з рядком N таблиці, але для файлів 22–87 це хибно (зсув на 1–2). Зіставлення відновлено лише за висотами тварин, без маси. Кореляція маси й об’єму зросла з 0,60 до 0,94. Та сама перевірка на CowDatabase2 нічого не знаходить.</span><span lang="en">The public CowDatabase pairs file N with table row N, but for files 22–87 that is wrong (off by one or two). The pairing was rebuilt from animal heights only, never weight. The weight–volume correlation rose from 0.60 to 0.94. The same check on CowDatabase2 finds nothing to fix.</span></p>
+  </div>
+
+  <h3 class="sub"><span lang="uk">Порівняння з публікаціями</span><span lang="en">Compared with published work</span></h3>
+  <div class="scroll" data-reveal>
+  <table class="results compact">
+    <thead><tr><th><span lang="uk">робота</span><span lang="en">study</span></th><th><span lang="uk">підхід</span><span lang="en">approach</span></th><th><span lang="uk">результат</span><span lang="en">result</span></th></tr></thead>
+    <tbody>
+      <tr><td>Ruchay et al., 2022</td><td><span lang="uk">YOLOv4 для вибору кадрів, CNN на RGB-D; та сама установка камер</span><span lang="en">YOLOv4 to pick frames, a CNN on RGB-D; the same camera rig</span></td><td class="mono">MAPE 8,4 %</td></tr>
+      <tr><td>Dulal et al., 2026</td><td><span lang="uk">PointNet / PointNet++ на 103 хмарах</span><span lang="en">PointNet / PointNet++ on 103 clouds</span></td><td class="mono">MAE ≈ 30–36 <span lang="uk">кг</span><span lang="en">kg</span></td></tr>
+      <tr><td>Wang et al.</td><td><span lang="uk">ConvNeXt, PointNet, DGCNN; ферма з 58 корів</span><span lang="en">ConvNeXt, PointNet, DGCNN; a 58-cow farm</span></td><td class="mono">MAPE 8–10 %</td></tr>
+      <tr class="ours"><td><span lang="uk">ця робота</span><span lang="en">this work</span></td><td><span lang="uk">геометричні ознаки, ансамбль, вкладена CV</span><span lang="en">geometric features, ensemble, nested CV</span></td><td class="mono">MAPE 3,3–3,7 %</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="footnote"><span lang="uk">Числа з різних робіт не є спільним бенчмарком: дані й протоколи відрізняються.</span><span lang="en">Numbers from different papers are not a shared benchmark: data and protocols differ.</span></p>
+</div>
+</section>
+
+<!-- ===== Limits ===== -->
+<section id="limits" class="section">
+  <div class="wrap">
+    <h2><span lang="uk">Коли прогнозу не довіряти</span><span lang="en">When not to trust a prediction</span></h2>
+    <div class="limits" data-reveal>
+      <article class="glass limit bad">
+        <span class="stamp bad"><span lang="uk">відмова</span><span lang="en">refused</span></span>
+        <p><span lang="uk">В одному з ракурсів не знайдено тварину або підлогу. Маси немає, лише причина і прохання пересканувати.</span><span lang="en">One view has no animal or no floor. No weight is given, only the reason and a request to rescan.</span></p>
+      </article>
+      <article class="glass limit warn">
+        <span class="stamp warn"><span lang="uk">позначено</span><span lang="en">flagged</span></span>
+        <ul>
+          <li><span lang="uk">стадо ще не відкалібровано: очікуйте зсув на десятки кілограмів;</span><span lang="en">the herd is not calibrated yet: expect a shift of tens of kilograms;</span></li>
+          <li><span lang="uk">об’єм тулуба поза діапазоном навчання більш ніж на 5&nbsp;%;</span><span lang="en">trunk volume more than 5&nbsp;% outside the training range;</span></li>
+          <li><span lang="uk">замало точок: менше 3&nbsp;000 збоку або 8&nbsp;000 згори.</span><span lang="en">too few points: under 3,000 in a side view or 8,000 from the top.</span></li>
+        </ul>
+      </article>
+      <article class="glass limit ok">
+        <span class="stamp ok"><span lang="uk">довірено</span><span lang="en">trusted</span></span>
+        <p><span lang="uk">Усі перевірки пройдено. Маса подається з 90&nbsp;% інтервалом: ±42&nbsp;кг для моделі, ширшим після калібрування на малій кількості тварин.</span><span lang="en">All checks pass. The weight comes with a 90&nbsp;% interval: ±42&nbsp;kg for the model, wider after calibrating on few animals.</span></p>
+      </article>
+    </div>
+    <dl class="facts" data-reveal>
+      <div><dt><span lang="uk">робочий діапазон</span><span lang="en">operating range</span></dt><dd class="mono">243–746 <span lang="uk">кг</span><span lang="en">kg</span></dd></div>
+      <div><dt><span lang="uk">дрейф</span><span lang="en">drift</span></dt><dd><span lang="uk">≥ 5 контрольних зважувань, середнє ≥ 10&nbsp;кг</span><span lang="en">≥ 5 spot weighings, mean ≥ 10&nbsp;kg</span></dd></div>
+      <div><dt><span lang="uk">межа точності</span><span lang="en">accuracy floor</span></dt><dd><span lang="uk">шум сенсора на чорній шкірі та регресія до середнього</span><span lang="en">sensor noise on black hide and regression to the mean</span></dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- ===== Farm ===== -->
+<section id="farm" class="section"><div class="wrap">
+  <h2><span lang="uk">Як це працює на фермі</span><span lang="en">How a farm uses it</span></h2>
+  <ol class="timeline" data-reveal>
+    <li><b><span lang="uk">День 1</span><span lang="en">Day 1</span></b><span lang="uk">Створити стадо, просканувати 20 тварин і зважити їх на вагах.</span><span lang="en">Create the herd, scan 20 animals and put them on the scale.</span></li>
+    <li><b><span lang="uk">Калібрування</span><span lang="en">Calibrate</span></b><span lang="uk">Система підбирає нахил і зсув саме для цього стада.</span><span lang="en">The system fits a slope and intercept for this herd.</span></li>
+    <li><b><span lang="uk">Щодня</span><span lang="en">Daily</span></b><span lang="uk">Тварина проходить станцію, маса й рішення зберігаються в історії.</span><span lang="en">An animal walks through the station; its weight and decision go into its history.</span></li>
+    <li><b><span lang="uk">Час від часу</span><span lang="en">Now and then</span></b><span lang="uk">Кілька контрольних зважувань; якщо стадо «попливло», система просить перекалібрувати.</span><span lang="en">A few spot weighings; if the herd has drifted, the system asks for a recalibration.</span></li>
+  </ol>
+  <figure class="fig" data-reveal>
+    <img lang="uk" src="figures/uk/14_integration_architecture.png" alt="Архітектура інтеграції" loading="lazy">
+    <img lang="en" src="figures/en/14_integration_architecture.png" alt="Integration architecture" loading="lazy">
+    <figcaption><span lang="uk">Сайт, застосунок ферми і дослідницькі скрипти викликають ту саму бібліотечну функцію через REST API.</span><span lang="en">The website, the farm app and the research scripts all call the same library function through the REST API.</span></figcaption>
+  </figure>
+</div>
+</section>
+
+<!-- ===== Try it ===== -->
+<section id="try" class="section">
+  <div class="wrap">
+    <h2><span lang="uk">Спробувати</span><span lang="en">Try it</span></h2>
+    <p class="app-cta glass" data-reveal><a class="btn primary" href="/app/"><span lang="uk">Відкрити застосунок ферми</span><span lang="en">Open the farm app</span> →</a>
+      <span lang="uk">Повний сценарій для комп’ютера і телефона: три хмари точок, маса з інтервалом, кадри камер і об’ємна модель.</span>
+      <span lang="en">The full flow for a computer and a phone: three clouds, weight with interval, camera frames and a 3-D model.</span></p>
+    <p class="offline" id="offline">
+      <span lang="uk">Жива демонстрація працює, коли сайт відкрито з сервера <code>cattle3d serve</code>. Тут показано лише приклад талона вгорі.</span>
+      <span lang="en">The live demo works when this site is opened from <code>cattle3d serve</code>. Here only the example ticket above is shown.</span>
+    </p>
+    <div class="try-grid">
+    <form class="demo glass" id="demo" hidden>
+      <div class="field"><label for="f-key"><span lang="uk">API-ключ (якщо задано)</span><span lang="en">API key (if set)</span></label><input id="f-key" type="password" autocomplete="off"></div>
+      <div class="field"><label for="f-herd"><span lang="uk">Стадо</span><span lang="en">Herd</span></label>
+        <div class="row"><select id="f-herd"></select><input id="f-new-herd" placeholder="Нове стадо / New herd"><button type="button" id="b-new-herd" class="ghost">+</button></div></div>
+      <div class="field"><label for="f-tag"><span lang="uk">Бирка тварини</span><span lang="en">Animal tag</span></label><input id="f-tag" required value="UA-0001"></div>
+      <div class="field files">
+        <label for="f-left"><span><span lang="uk">Ліва</span><span lang="en">Left</span> .ply</span><input id="f-left" type="file" accept=".ply" required></label>
+        <label for="f-right"><span><span lang="uk">Права</span><span lang="en">Right</span> .ply</span><input id="f-right" type="file" accept=".ply" required></label>
+        <label for="f-top"><span><span lang="uk">Верхня</span><span lang="en">Top</span> .ply</span><input id="f-top" type="file" accept=".ply" required></label>
+      </div>
+      <div class="field"><label for="f-scale"><span lang="uk">Маса на вагах, кг (необов’язково)</span><span lang="en">Scale weight, kg (optional)</span></label><input id="f-scale" type="number" min="20" max="2000" step="0.1"></div>
+      <div class="actions">
+        <button type="submit" id="b-scan"><span lang="uk">Зважити</span><span lang="en">Weigh</span></button>
+        <button type="button" id="b-cal" class="ghost"><span lang="uk">Калібрувати стадо</span><span lang="en">Calibrate herd</span></button>
+      </div>
+      <p class="status-line" id="herd-status"></p>
+      <p class="error" id="demo-error" role="alert"></p>
+    </form>
+    <aside class="ticket glass" id="ticket" aria-live="polite">
     <div class="ticket-head">
       <span lang="uk">Талон зважування</span><span lang="en">Weigh ticket</span>
       <span class="ticket-no mono" id="t-no">№ 70</span>
@@ -84,176 +277,7 @@
       <span lang="en">An example from real CowDatabase2 data. The model saw this cow during training, so this illustrates the output and is not an accuracy result.</span>
     </p>
   </aside>
-</section>
-
-<!-- ===== How it works ===== -->
-<section id="how" class="band">
-  <div class="wrap">
-    <h2><span lang="uk">Як це працює</span><span lang="en">How it works</span></h2>
-    <ol class="steps">
-      <li><h3><span lang="uk">Три хмари точок</span><span lang="en">Three point clouds</span></h3>
-        <p><span lang="uk">Кожен кадр Kinect v2 має 512 × 424 точок у метрах, у системі координат камери. Точки без відбиття, яких багато на чорній шкірі, мають нульову глибину.</span><span lang="en">Each Kinect v2 frame is a 512 × 424 grid of points in metres, in the camera's own coordinates. Pixels with no return, common on black hide, have zero depth.</span></p></li>
-      <li><h3><span lang="uk">Підлога і тварина</span><span lang="en">Floor and animal</span></h3>
-        <p><span lang="uk">RANSAC знаходить площину підлоги з обмеженням нахилу. Тварина — найбільша зв’язна поверхня на висоті 0,06–2,2&nbsp;м; фрагменти, відрізані стрибком глибини, приєднуються у 3-D.</span><span lang="en">RANSAC finds the floor plane within a tilt limit. The animal is the largest connected surface 0.06–2.2&nbsp;m above it; fragments cut off by a depth jump are merged back in 3-D.</span></p></li>
-      <li><h3><span lang="uk">Система координат тіла</span><span lang="en">Body frame</span></h3>
-        <p><span lang="uk">Висота рахується від підлоги, вісь тіла береться з PCA. Нічого не нормалізується: більша корова лишається більшою.</span><span lang="en">Height is measured from the floor and the body axis comes from PCA. Nothing is normalised: a bigger cow stays bigger.</span></p></li>
-      <li><h3><span lang="uk">Об’єм і профіль спини</span><span lang="en">Volume and back profile</span></h3>
-        <p><span lang="uk">64 поперечні зрізи дають об’єм під спиною. Тулуб — найдовший відрізок зрізів, ширших за 0,65 від найширшого. Профіль спини: 10 частин тулуба від голови, для кожної площа, ширина й висота. Разом 44 ознаки.</span><span lang="en">64 cross-sections give the volume under the back. The trunk is the longest run of slices wider than 0.65 of the widest. The back profile cuts the trunk into 10 parts from the head end, each with an area, width and height. 44 features in all.</span></p></li>
-      <li><h3><span lang="uk">Модель і рішення</span><span lang="en">Model and decision</span></h3>
-        <p><span lang="uk">Ансамбль фізичної моделі a·V + b, робастної лінійної та LightGBM. Конформний 90&nbsp;% інтервал, перевірка робочого діапазону та кількості точок, поправка стада.</span><span lang="en">An ensemble of a physics model a·V + b, a robust linear model and LightGBM. A conformal 90&nbsp;% interval, an operating-range and point-count check, and the herd's correction.</span></p></li>
-    </ol>
-    <figure class="fig">
-      <img lang="uk" src="figures/uk/03_segmentation_steps.png" alt="Етапи сегментації" loading="lazy">
-      <img lang="en" src="figures/en/03_segmentation_steps.png" alt="Segmentation steps" loading="lazy">
-      <figcaption><span lang="uk">Виділення тварини: висота над підлогою, смуга висот, зв’язні поверхні, обрана тварина.</span><span lang="en">Finding the animal: height above the floor, the height band, connected surfaces, the chosen animal.</span></figcaption>
-    </figure>
-    <figure class="fig">
-      <img lang="uk" src="figures/uk/05_cross_sections.png" alt="Поперечні зрізи" loading="lazy">
-      <img lang="en" src="figures/en/05_cross_sections.png" alt="Cross-sections" loading="lazy">
-      <figcaption><span lang="uk">Профіль ширини, межі тулуба і зрізи на 25, 50 та 75&nbsp;% його довжини. Об’єм включає простір між ногами, тому маса = a·V + b, без густини.</span><span lang="en">Width profile, trunk limits and slices at 25, 50 and 75&nbsp;% of its length. The volume includes the space between the legs, so weight = a·V + b, with no density.</span></figcaption>
-    </figure>
-  </div>
-</section>
-
-<!-- ===== Results ===== -->
-<section id="results" class="wrap section">
-  <h2><span lang="uk">Результати на двох відкритих стадах</span><span lang="en">Results on two public herds</span></h2>
-  <p class="note"><span lang="uk">Вкладена 5-кратна перехресна перевірка × 5 повторів, групування за твариною, бутстреп-інтервали по тваринах, поправка Холма.</span><span lang="en">Nested 5-fold cross-validation × 5 repeats, grouped by animal, bootstrap intervals over animals, Holm correction.</span></p>
-  <div class="scroll">
-  <table class="results">
-    <thead><tr>
-      <th><span lang="uk">стадо</span><span lang="en">herd</span></th>
-      <th class="num">n</th>
-      <th><span lang="uk">маса, кг</span><span lang="en">weight, kg</span></th>
-      <th class="num"><span lang="uk">3-D, MAE кг</span><span lang="en">3-D, MAE kg</span></th>
-      <th class="num"><span lang="uk">рулетка, MAE кг</span><span lang="en">tape, MAE kg</span></th>
-      <th class="num">MAPE</th>
-      <th><span lang="uk">3-D проти рулетки</span><span lang="en">3-D vs tape</span></th>
-    </tr></thead>
-    <tbody>
-      <tr><td>CowDatabase <span class="muted"><span lang="uk">герефорд</span><span lang="en">Hereford</span></span></td><td class="num">101</td><td class="mono">243–605</td>
-        <td class="num"><b>16,1</b> <span class="muted">[13,3; 19,4]</span></td><td class="num">22,1</td><td class="num">3,70&nbsp;%</td>
-        <td><span class="chip ok"><span lang="uk">краще на 6,0 кг, p = 0,019*</span><span lang="en">better by 6.0 kg, p = 0.019*</span></span></td></tr>
-      <tr><td>CowDatabase2 <span class="muted"><span lang="uk">чорна ангуська</span><span lang="en">Black Angus</span></span></td><td class="num">94</td><td class="mono">556–746</td>
-        <td class="num"><b>20,7</b> <span class="muted">[17,6; 24,2]</span></td><td class="num">22,6</td><td class="num">3,34&nbsp;%</td>
-        <td><span class="chip neutral"><span lang="uk">різниця не доведена</span><span lang="en">no claimable difference</span></span></td></tr>
-    </tbody>
-  </table>
-  </div>
-  <p class="footnote"><span lang="uk">* Профіль спини обрано після порівняння восьми варіантів на цих самих тваринах, тому перевага на герефордах є дослідницьким результатом. Без профілю: 17,5 кг, p = 0,063.</span><span lang="en">* The back profile was chosen after comparing eight variants on these same animals, so the Hereford advantage is exploratory. Without it: 17.5 kg, p = 0.063.</span></p>
-
-  <figure class="fig">
-    <img lang="uk" src="figures/uk/09_within_herd_oof.png" alt="Прогноз проти маси на вагах" loading="lazy">
-    <img lang="en" src="figures/en/09_within_herd_oof.png" alt="Prediction against scale weight" loading="lazy">
-    <figcaption><span lang="uk">Прогноз поза вибіркою проти маси на вагах. На вузькому за масою ангуському стаді прогнози стягуються до середнього.</span><span lang="en">Out-of-fold prediction against scale weight. On the narrow-range Angus herd predictions are pulled towards the herd mean.</span></figcaption>
-  </figure>
-
-  <div class="split">
-    <div class="split-text">
-      <h3><span lang="uk">Нове стадо: зсув, який знімають 20 зважувань</span><span lang="en">A new herd: a shift that 20 weighings remove</span></h3>
-      <p><span lang="uk">Модель, перенесена на інше стадо без змін, помиляється переважно на сталий зсув: +107&nbsp;кг з ангуського на герефордське стадо і −31&nbsp;кг назад. Поправка нахилу й зсуву за 20 контрольними тваринами повертає похибку в межі 1 п.п. MAPE від моделі, навченої на самому стаді, у 96&nbsp;% і 90&nbsp;% випадкових наборів.</span><span lang="en">A model moved to the other herd unchanged is off mostly by a constant shift: +107&nbsp;kg from the Angus to the Hereford herd and −31&nbsp;kg back. A slope and intercept fitted on 20 reference animals brings the error within 1 MAPE point of a model trained on that herd, in 96&nbsp;% and 90&nbsp;% of random reference sets.</span></p>
     </div>
-    <figure class="fig">
-      <img lang="uk" src="figures/uk/12_recalibration_curve.png" alt="Калібрування за k зважуваннями" loading="lazy">
-      <img lang="en" src="figures/en/12_recalibration_curve.png" alt="Recalibration with k weighings" loading="lazy">
-    </figure>
-  </div>
-
-  <div class="finding">
-    <h3><span lang="uk">Знахідка в даних</span><span lang="en">A finding in the data</span></h3>
-    <p><span lang="uk">Публічний CowDatabase зіставляє файл N з рядком N таблиці, але для файлів 22–87 це хибно (зсув на 1–2). Зіставлення відновлено лише за висотами тварин, без маси. Кореляція маси й об’єму зросла з 0,60 до 0,94. Та сама перевірка на CowDatabase2 нічого не знаходить.</span><span lang="en">The public CowDatabase pairs file N with table row N, but for files 22–87 that is wrong (off by one or two). The pairing was rebuilt from animal heights only, never weight. The weight–volume correlation rose from 0.60 to 0.94. The same check on CowDatabase2 finds nothing to fix.</span></p>
-  </div>
-
-  <h3 class="sub"><span lang="uk">Порівняння з публікаціями</span><span lang="en">Compared with published work</span></h3>
-  <div class="scroll">
-  <table class="results compact">
-    <thead><tr><th><span lang="uk">робота</span><span lang="en">study</span></th><th><span lang="uk">підхід</span><span lang="en">approach</span></th><th><span lang="uk">результат</span><span lang="en">result</span></th></tr></thead>
-    <tbody>
-      <tr><td>Ruchay et al., 2022</td><td><span lang="uk">YOLOv4 для вибору кадрів, CNN на RGB-D; та сама установка камер</span><span lang="en">YOLOv4 to pick frames, a CNN on RGB-D; the same camera rig</span></td><td class="mono">MAPE 8,4 %</td></tr>
-      <tr><td>Dulal et al., 2026</td><td><span lang="uk">PointNet / PointNet++ на 103 хмарах</span><span lang="en">PointNet / PointNet++ on 103 clouds</span></td><td class="mono">MAE ≈ 30–36 <span lang="uk">кг</span><span lang="en">kg</span></td></tr>
-      <tr><td>Wang et al.</td><td><span lang="uk">ConvNeXt, PointNet, DGCNN; ферма з 58 корів</span><span lang="en">ConvNeXt, PointNet, DGCNN; a 58-cow farm</span></td><td class="mono">MAPE 8–10 %</td></tr>
-      <tr class="ours"><td><span lang="uk">ця робота</span><span lang="en">this work</span></td><td><span lang="uk">геометричні ознаки, ансамбль, вкладена CV</span><span lang="en">geometric features, ensemble, nested CV</span></td><td class="mono">MAPE 3,3–3,7 %</td></tr>
-    </tbody>
-  </table>
-  </div>
-  <p class="footnote"><span lang="uk">Числа з різних робіт не є спільним бенчмарком: дані й протоколи відрізняються.</span><span lang="en">Numbers from different papers are not a shared benchmark: data and protocols differ.</span></p>
-</section>
-
-<!-- ===== Limits ===== -->
-<section id="limits" class="band">
-  <div class="wrap">
-    <h2><span lang="uk">Коли прогнозу не довіряти</span><span lang="en">When not to trust a prediction</span></h2>
-    <div class="limits">
-      <article class="limit bad">
-        <span class="stamp bad"><span lang="uk">відмова</span><span lang="en">refused</span></span>
-        <p><span lang="uk">В одному з ракурсів не знайдено тварину або підлогу. Маси немає, лише причина і прохання пересканувати.</span><span lang="en">One view has no animal or no floor. No weight is given, only the reason and a request to rescan.</span></p>
-      </article>
-      <article class="limit warn">
-        <span class="stamp warn"><span lang="uk">позначено</span><span lang="en">flagged</span></span>
-        <ul>
-          <li><span lang="uk">стадо ще не відкалібровано: очікуйте зсув на десятки кілограмів;</span><span lang="en">the herd is not calibrated yet: expect a shift of tens of kilograms;</span></li>
-          <li><span lang="uk">об’єм тулуба поза діапазоном навчання більш ніж на 5&nbsp;%;</span><span lang="en">trunk volume more than 5&nbsp;% outside the training range;</span></li>
-          <li><span lang="uk">замало точок: менше 3&nbsp;000 збоку або 8&nbsp;000 згори.</span><span lang="en">too few points: under 3,000 in a side view or 8,000 from the top.</span></li>
-        </ul>
-      </article>
-      <article class="limit ok">
-        <span class="stamp ok"><span lang="uk">довірено</span><span lang="en">trusted</span></span>
-        <p><span lang="uk">Усі перевірки пройдено. Маса подається з 90&nbsp;% інтервалом: ±42&nbsp;кг для моделі, ширшим після калібрування на малій кількості тварин.</span><span lang="en">All checks pass. The weight comes with a 90&nbsp;% interval: ±42&nbsp;kg for the model, wider after calibrating on few animals.</span></p>
-      </article>
-    </div>
-    <dl class="facts">
-      <div><dt><span lang="uk">робочий діапазон</span><span lang="en">operating range</span></dt><dd class="mono">243–746 <span lang="uk">кг</span><span lang="en">kg</span></dd></div>
-      <div><dt><span lang="uk">дрейф</span><span lang="en">drift</span></dt><dd><span lang="uk">≥ 5 контрольних зважувань, середнє ≥ 10&nbsp;кг</span><span lang="en">≥ 5 spot weighings, mean ≥ 10&nbsp;kg</span></dd></div>
-      <div><dt><span lang="uk">межа точності</span><span lang="en">accuracy floor</span></dt><dd><span lang="uk">шум сенсора на чорній шкірі та регресія до середнього</span><span lang="en">sensor noise on black hide and regression to the mean</span></dd></div>
-    </dl>
-  </div>
-</section>
-
-<!-- ===== Farm ===== -->
-<section id="farm" class="wrap section">
-  <h2><span lang="uk">Як це працює на фермі</span><span lang="en">How a farm uses it</span></h2>
-  <ol class="timeline">
-    <li><b><span lang="uk">День 1</span><span lang="en">Day 1</span></b><span lang="uk">Створити стадо, просканувати 20 тварин і зважити їх на вагах.</span><span lang="en">Create the herd, scan 20 animals and put them on the scale.</span></li>
-    <li><b><span lang="uk">Калібрування</span><span lang="en">Calibrate</span></b><span lang="uk">Система підбирає нахил і зсув саме для цього стада.</span><span lang="en">The system fits a slope and intercept for this herd.</span></li>
-    <li><b><span lang="uk">Щодня</span><span lang="en">Daily</span></b><span lang="uk">Тварина проходить станцію, маса й рішення зберігаються в історії.</span><span lang="en">An animal walks through the station; its weight and decision go into its history.</span></li>
-    <li><b><span lang="uk">Час від часу</span><span lang="en">Now and then</span></b><span lang="uk">Кілька контрольних зважувань; якщо стадо «попливло», система просить перекалібрувати.</span><span lang="en">A few spot weighings; if the herd has drifted, the system asks for a recalibration.</span></li>
-  </ol>
-  <figure class="fig">
-    <img lang="uk" src="figures/uk/14_integration_architecture.png" alt="Архітектура інтеграції" loading="lazy">
-    <img lang="en" src="figures/en/14_integration_architecture.png" alt="Integration architecture" loading="lazy">
-    <figcaption><span lang="uk">Сайт, планшет ферми і дослідницькі скрипти викликають ту саму бібліотечну функцію через REST API.</span><span lang="en">The website, the farm tablet and the research scripts all call the same library function through the REST API.</span></figcaption>
-  </figure>
-</section>
-
-<!-- ===== Try it ===== -->
-<section id="try" class="band">
-  <div class="wrap">
-    <h2><span lang="uk">Спробувати</span><span lang="en">Try it</span></h2>
-    <p class="app-cta"><a class="app-btn" href="/app/"><span lang="uk">Відкрити застосунок ферми</span><span lang="en">Open the farm app</span> →</a>
-      <span lang="uk">Повний сценарій для комп’ютера і телефона: три хмари точок, маса з інтервалом, кадри камер і об’ємна модель.</span>
-      <span lang="en">The full flow for a computer and a phone: three clouds, weight with interval, camera frames and a 3-D model.</span></p>
-    <p class="offline" id="offline">
-      <span lang="uk">Жива демонстрація працює, коли сайт відкрито з сервера <code>cattle3d serve</code>. Тут показано лише приклад талона вгорі.</span>
-      <span lang="en">The live demo works when this site is opened from <code>cattle3d serve</code>. Here only the example ticket above is shown.</span>
-    </p>
-    <form class="demo" id="demo" hidden>
-      <div class="field"><label for="f-key"><span lang="uk">API-ключ (якщо задано)</span><span lang="en">API key (if set)</span></label><input id="f-key" type="password" autocomplete="off"></div>
-      <div class="field"><label for="f-herd"><span lang="uk">Стадо</span><span lang="en">Herd</span></label>
-        <div class="row"><select id="f-herd"></select><input id="f-new-herd" placeholder="Нове стадо / New herd"><button type="button" id="b-new-herd" class="ghost">+</button></div></div>
-      <div class="field"><label for="f-tag"><span lang="uk">Бирка тварини</span><span lang="en">Animal tag</span></label><input id="f-tag" required value="UA-0001"></div>
-      <div class="field files">
-        <label for="f-left"><span><span lang="uk">Ліва</span><span lang="en">Left</span> .ply</span><input id="f-left" type="file" accept=".ply" required></label>
-        <label for="f-right"><span><span lang="uk">Права</span><span lang="en">Right</span> .ply</span><input id="f-right" type="file" accept=".ply" required></label>
-        <label for="f-top"><span><span lang="uk">Верхня</span><span lang="en">Top</span> .ply</span><input id="f-top" type="file" accept=".ply" required></label>
-      </div>
-      <div class="field"><label for="f-scale"><span lang="uk">Маса на вагах, кг (необов’язково)</span><span lang="en">Scale weight, kg (optional)</span></label><input id="f-scale" type="number" min="20" max="2000" step="0.1"></div>
-      <div class="actions">
-        <button type="submit" id="b-scan"><span lang="uk">Зважити</span><span lang="en">Weigh</span></button>
-        <button type="button" id="b-cal" class="ghost"><span lang="uk">Калібрувати стадо</span><span lang="en">Calibrate herd</span></button>
-      </div>
-      <p class="status-line" id="herd-status"></p>
-      <p class="error" id="demo-error" role="alert"></p>
-    </form>
   </div>
 </section>
 
@@ -263,6 +287,8 @@
   <p><span lang="uk">Дані: CowDatabase і CowDatabase2 (ruchaya, GitHub), Kinect v2. Код: <a href="https://github.com/CherkasovAndrii/Cattle-live-weight-estimation-based-on-3d-cloud-points">GitHub</a>.</span><span lang="en">Data: CowDatabase and CowDatabase2 (ruchaya, GitHub), Kinect v2. Code: <a href="https://github.com/CherkasovAndrii/Cattle-live-weight-estimation-based-on-3d-cloud-points">GitHub</a>.</span></p>
 </footer>
 
+<script src="space.js"></script>
+<script src="hero.js"></script>
 <script src="site.js"></script>
 </body>
 </html>

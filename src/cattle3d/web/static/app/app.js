@@ -349,9 +349,10 @@
     function colour(i, shade) {
       let r, g, b;
       if (byCamera) [r, g, b] = CAMERA_RGB[viewNames[viewOf[i]]] || [200, 200, 200];
-      else { // hide tones: dark at the belly, light along the back
+      else { // the site's night palette: violet at the belly, cyan, white along the back
         const t = Math.min(1, Math.max(0, pts[3 * i + 2] / zmax));
-        r = 70 + 175 * t; g = 42 + 135 * t; b = 30 + 95 * t * t;
+        if (t < 0.55) { const k = t / 0.55; r = 82 - 18 * k; g = 56 + 161 * k; b = 242; }
+        else { const k = (t - 0.55) / 0.45; r = 64 + 191 * k; g = 217 + 30 * k; b = 242 - 7 * k; }
       }
       return `rgb(${(r * shade) | 0},${(g * shade) | 0},${(b * shade) | 0})`;
     }

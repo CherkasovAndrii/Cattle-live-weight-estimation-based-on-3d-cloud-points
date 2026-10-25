@@ -106,6 +106,9 @@ What the app shows:
   and a rotatable 3-D view of the whole animal: the three clouds merged with the
   station calibration (camera poses shipped with the datasets), coloured by
   height or by camera, with the 64 trunk slices that make the volume. With a scale weight the error is shown next to it.
+  If the three clouds do not line up as one animal (files from different cows
+  or in the wrong slots), the weight is flagged or refused; see the same-animal
+  check in [`docs/API.md`](docs/API.md).
 - **Історія**: the farm's recent weighings.
 - **Ферма**: calibration, drift check, the model card and the QR code.
 
@@ -176,7 +179,9 @@ HTTP, stored in SQLite. See [`docs/API.md`](docs/API.md).
 
 The same server shows the presentation website at `/`, in Ukrainian and
 English: the method, results, limits, the farm workflow, and a live demo that
-weighs uploaded PLY files through the API. Thesis figures come from
+weighs uploaded PLY files through the API. Its hero is the real merged point cloud of
+one CowDatabase2 cow (`img/cow70_points.bin`) drawn with WebGL over a moving
+starfield; with reduced motion the sky and the cow stay still. Thesis figures come from
 `reports/figures/thesis/` (`--figures` to change; `--no-site` for the API only).
 
 ### From Python
