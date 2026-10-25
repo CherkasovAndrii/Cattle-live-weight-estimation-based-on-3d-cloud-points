@@ -11,6 +11,8 @@
   const REASONS_UK = [
     [/^herd not calibrated.*/, "стадо не відкалібровано: зважте 20 тварин на вагах і відкалібруйте"],
     [/^the three views do not seem to show the same animal.*/, "три хмари, схоже, від різних тварин: вони не сходяться за калібруванням станції; проскануйте тварину ще раз"],
+    [/^depth noise in (left|right|top) view ([\d.]+) % of range.*$/, (m, v, x) => `${VIEW_UK[v]}: шум глибини ${x.replace(".", ",")} % відстані, більше за допустимі 0,75 %; перевірте камеру`],
+    [/^many scattered missing pixels in (left|right|top) view.*$/, (m, v) => `${VIEW_UK[v]}: багато розсіяних пікселів без глибини; протріть скло камери`],
     [/^body volume outside the training range$/, "об’єм тулуба поза діапазоном, на якому навчено модель"],
     [/^too few points in (left|right|top) view$/, (m, v) => `замало точок у кадрі: ${VIEW_UK[v].toLowerCase()}`],
     [/^rescan: the three views contradict each other.*$/, "хмари суперечать одна одній: файл не в тому слоті або хмари від різних тварин. Перевірте, що ліва, права й верхня хмари стоять на своїх місцях"],

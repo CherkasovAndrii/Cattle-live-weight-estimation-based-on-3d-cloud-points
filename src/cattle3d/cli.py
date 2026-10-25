@@ -287,8 +287,12 @@ def cmd_sensor(args: argparse.Namespace) -> None:
     if not floor_path.is_file():
         pd.concat([sensor.floor_noise_frame(h.animals) for h in herds]).to_csv(floor_path, index=False)
     floor = pd.read_csv(floor_path)
+    quality_path = cache / "quality_check.csv"
+    if not quality_path.is_file():
+        pd.concat([sensor.quality_check_frame(h.animals, args.workers) for h in herds]).to_csv(quality_path, index=False)
+    quality = pd.read_csv(quality_path, dtype={"animal_id": str})
     REPORTS.mkdir(exist_ok=True)
-    (REPORTS / "sensor_limits.md").write_text(sensor.sensor_markdown(results, floor))
+    (REPORTS / "sensor_limits.md").write_text(sensor.sensor_markdown(results, floor, quality))
     frame = sensor.results_frame(results)
     frame.to_csv(REPORTS / "sensor_limits.csv", index=False)
     print(f"wrote {REPORTS / 'sensor_limits.md'}")

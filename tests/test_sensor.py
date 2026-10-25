@@ -9,7 +9,7 @@ from sklearn.linear_model import LinearRegression
 from cattle3d.evaluation.sensor import (
     LevelResult,
     Perturbation,
-    floor_noise,
+    recorded_quality,
     perturb,
     perturb_views,
     score_herd,
@@ -71,10 +71,11 @@ def test_bad_levels_are_rejected():
 
 
 def test_floor_noise_recovers_known_sigma():
-    f = floor_noise(_floor_cloud(sigma_m=0.005), View.TOP)
+    f, edges = recorded_quality(_floor_cloud(sigma_m=0.005), View.TOP)
     assert f.range_m == pytest.approx(2.55, abs=0.1)
     assert f.local_sigma_m == pytest.approx(0.005, rel=0.15)
-    assert floor_noise(_floor_cloud(), View.TOP).local_sigma_m < 1e-6
+    assert edges == 0
+    assert recorded_quality(_floor_cloud(), View.TOP)[0].local_sigma_m < 1e-6
 
 
 def _level(kind: str, level: float, delta_high: float, failed: int = 0) -> LevelResult:
@@ -107,3 +108,17 @@ def test_score_herd_pairs_degraded_with_clean_animals():
     assert by[scaled].bias_kg > 20 and by[scaled].delta_mae.estimate > 10
     assert by[scaled].mae_recal < by[scaled].mae.estimate  # the herd correction absorbs a scale error
     assert by[lost].n_failed == 6 and by[lost].n == 54
+
+
+def test_quality_limits_separate_a_degraded_camera():
+    from cattle3d.geometry.quality import view_quality
+    from cattle3d.types import Plane
+
+    floor = Plane(np.array([0.0, 0.0, -1.0]), 2.5)
+    cloud = _floor_cloud(sigma_m=0.003)
+    good = view_quality(cloud, View.TOP, floor)
+    assert not good.noisy and not good.scattered_loss
+    noisy = view_quality(perturb(cloud, Perturbation("noise", 0.012), np.random.default_rng(0)), View.TOP, floor, 0.1)
+    assert noisy.noisy and noisy.floor_noise_rel == pytest.approx(0.012, rel=0.2)
+    holes = view_quality(perturb(cloud, Perturbation("dropout", 0.25), np.random.default_rng(0)), View.TOP, floor)
+    assert holes.scattered_loss and not holes.noisy

@@ -136,6 +136,10 @@ cattle3d train
 
 # 4. Predict one animal
 cattle3d predict --left L.ply --right R.ply --top T.ply
+
+# 5. Permissible depth-sensor error -> reports/sensor_limits.md, figure 16
+#    (re-extracts every degraded herd; about an hour with 4 processes, cached in data/sensor)
+cattle3d sensor --cowdb2 ../CowDatabase2 --cowdb1 ../CowDatabase
 ```
 
 `predict` prints JSON:
@@ -215,10 +219,11 @@ src/cattle3d/
   api/                     SQLite store, farm service, FastAPI app (docs/API.md)
   preview.py               what the cameras saw: depth thumbnails, body points, trunk slices
   geometry/rig.py          station calibration and merging the three views for display
+  geometry/quality.py      per-scan recording check: floor noise and scattered missing pixels
   demo.py                  defence demo: held-out cows, demo model, seeded demo farms
   web/static/              presentation website served at / (uk/en, live demo)
   web/static/app/          farm web app served at /app/ (uk, phone first)
-  evaluation/              metrics and bootstrap, CV and transfer, study, report
+  evaluation/              metrics and bootstrap, CV and transfer, study, report, sensor-error study
   figures/                 thesis schemes and figures (uk/en) drawn from the code itself
   cli.py                   thin command-line adapter
 scripts/run_demo.*         one-command demo start (Windows .bat, POSIX .sh)

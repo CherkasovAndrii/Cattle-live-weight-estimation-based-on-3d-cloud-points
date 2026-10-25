@@ -46,7 +46,7 @@ kept in one SQLite file. The model artifact is never modified by the API.
 
 | field | meaning |
 |---|---|
-| `status` | `trusted`: use the weight. `flagged`: a weight is returned, but `reasons` says why it is outside the validated range (herd not calibrated, body volume outside the training range, too few points in a view, the three views may not show the same animal). `refused`: no weight; rescan (no animal or floor in a view, or the three views contradict each other). |
+| `status` | `trusted`: use the weight. `flagged`: a weight is returned, but `reasons` says why it is outside the validated range (herd not calibrated, body volume outside the training range, too few points in a view, a camera noisier or losing more pixels than the training cameras, the three views may not show the same animal). `refused`: no weight; rescan (no animal or floor in a view, or the three views contradict each other). |
 | `weight_kg`, `lower_kg`, `upper_kg` | herd-corrected weight and its 90 % interval |
 | `raw_weight_kg` | model output before the herd correction (kept so the herd can be recalibrated without re-processing clouds) |
 | `calibration_id` | which herd correction was applied |
@@ -129,6 +129,25 @@ and therefore optimistic; animals of similar size and build can pass. Without a
 station calibration (a new farm in the demo) there is no check. The preview
 reports the numbers as `view_agreement`
 (`same_animal`, `footprint_share`, `back_gap_m`, `shift_m`).
+
+### Recording check
+
+Every scan (with or without a station calibration) also checks that each
+camera records as well as the cameras the model was trained on. On the floor
+pixels it measures the depth noise (second differences of adjacent pixels, as
+a share of the distance), and over the whole frame the edge density (pairs of
+neighbouring pixels where one has depth and the other not, per valid pixel;
+scattered single missing pixels raise it). A view above 0.75 % noise or 0.85
+edge density flags the weight ("depth noise in left view 1.2 % of range ...",
+"many scattered missing pixels in top view ..."). With `preview=true` the
+values are in `preview.recording_quality`.
+
+The limits come from `cattle3d sensor` ([`reports/sensor_limits.md`](../reports/sensor_limits.md)):
+the recordings of both public herds show at most 0.33 % noise and 0.74 edge
+density in any view; the model tolerates added random depth noise of 0.5 % of
+the distance but not 1 %, and 10 % lost pixels but not 20 %. No recorded scan is
+flagged; every scan with 1 % noise or 20 % lost pixels is. The thresholds were
+chosen on the same 195 animals, from one camera model in one barn.
 
 `cattle3d demo` adds three read-only routes for the defence demo:
 `GET /v1/demo` (demo farms and the held-out sample cows),

@@ -16,9 +16,11 @@ from cattle3d.figures.style import HERD_COLORS, WIDTH_IN, apply_style, breed, de
 def sensor_tolerance(results: pd.DataFrame, floor: pd.DataFrame, out: Path, t: Lang) -> Path:
     """MAE increase over clean clouds against each kind of depth error.
 
-    Open markers: some animals could not be segmented at that level."""
+    Open markers: some animals could not be segmented at that level; the
+    dotted part of a curve is measured on the remaining animals only. Panels
+    have their own vertical scales."""
     apply_style()
-    fig, axes = plt.subplots(1, 3, figsize=(WIDTH_IN, 2.7), layout="constrained", sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(WIDTH_IN, 2.7), layout="constrained")
     titles = {
         "noise": t("випадковий шум глибини", "random depth noise"),
         "scale": t("похибка масштабу глибини", "depth scale error"),
@@ -37,11 +39,17 @@ def sensor_tolerance(results: pd.DataFrame, floor: pd.DataFrame, out: Path, t: L
             g = g.sort_values("level")
             x = g.level.to_numpy() * 100
             color = HERD_COLORS[herd]
-            ax.plot(x, g.delta_mae, "-", color=color, lw=1.1, label=breed(herd, t))
-            ax.fill_between(x, g.delta_low, g.delta_high, color=color, alpha=0.12, lw=0)
+            y = g.delta_mae.to_numpy()
             lost = g.n_failed.to_numpy() > 0
-            ax.scatter(x[~lost], g.delta_mae[~lost], s=12, color=color, zorder=3)
-            ax.scatter(x[lost], g.delta_mae[lost], s=14, facecolor="white", edgecolor=color, zorder=3)
+            # Past the first level that loses animals the increase is measured on
+            # the survivors only, so the curve continues dotted.
+            first = int(np.argmax(lost)) if lost.any() else len(x)
+            ax.plot(x[:first], y[:first], "-", color=color, lw=1.1, label=breed(herd, t))
+            if first < len(x):
+                ax.plot(x[first - 1:], y[first - 1:], ":", color=color, lw=1.0)
+            ax.fill_between(x[:first], g.delta_low[:first], g.delta_high[:first], color=color, alpha=0.12, lw=0)
+            ax.scatter(x[~lost], y[~lost], s=12, color=color, zorder=3)
+            ax.scatter(x[lost], y[lost], s=14, facecolor="white", edgecolor=color, zorder=3)
             if kind == "scale":
                 recal = (g.mae_recal - g.mae_recal_clean).to_numpy()
                 ax.plot(x, recal, "--", color=color, lw=1.0,
@@ -54,8 +62,8 @@ def sensor_tolerance(results: pd.DataFrame, floor: pd.DataFrame, out: Path, t: L
         ax.set_title(titles[kind])
         ax.set_xlabel(xlabels[kind])
         panel_label(ax, letter)
-        ax.legend(frameon=False, fontsize=6, loc="upper left")
+        ax.legend(frameon=False, fontsize=6, loc="upper center" if kind == "scale" else "upper left")
     axes[0].set_ylabel(t("зростання MAE, кг", "MAE increase, kg"))
-    axes[0].text(axes[0].get_xlim()[1], TOLERANCE_KG, t(f"допуск {dec(TOLERANCE_KG, 1, t)} кг", f"tolerance {TOLERANCE_KG:g} kg"),
-                 ha="right", va="bottom", fontsize=6.5, color="#1f2937")
+    axes[2].text(axes[2].get_xlim()[0] + 1, TOLERANCE_KG, t(f"допуск {dec(TOLERANCE_KG, 1, t)} кг", f"tolerance {TOLERANCE_KG:g} kg"),
+                 ha="left", va="bottom", fontsize=6.5, color="#1f2937")
     return save(fig, out)

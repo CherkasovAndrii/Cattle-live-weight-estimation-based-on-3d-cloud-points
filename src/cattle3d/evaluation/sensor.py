@@ -34,10 +34,19 @@ import pandas as pd
 from sklearn.model_selection import KFold
 
 from cattle3d.evaluation.stats import Interval, bootstrap_ci
-from cattle3d.geometry.segment import SegmentationConfig, SegmentationError, fit_floor, _EXPECTED_UP
+from cattle3d.geometry.quality import (
+    MAX_EDGE_DENSITY,
+    MAX_FLOOR_NOISE_REL,
+    FloorNoise,
+    edge_density,
+    floor_noise,
+    quality_reasons,
+    view_quality,
+)
+from cattle3d.geometry.segment import _EXPECTED_UP, SegmentationConfig, SegmentationError, fit_floor
 from cattle3d.io.ply import read_organized_cloud
 from cattle3d.modeling.calibration import fit_correction
-from cattle3d.pipeline import features_from_clouds
+from cattle3d.pipeline import analyse_clouds, features_from_clouds
 from cattle3d.types import AnimalRecord, OrganizedCloud, View
 
 KINDS = ("noise", "scale", "dropout")
@@ -128,48 +137,17 @@ def extract_degraded(
 
 
 # ---- the real noise of the recordings ------------------------------------------------
-@dataclass(frozen=True)
-class FloorNoise:
-    """Depth noise measured on the floor of one view (metres and share of range)."""
-
-    view: View
-    range_m: float  # median distance of the floor pixels
-    plane_sigma_m: float  # robust spread around the fitted plane (includes floor unevenness)
-    local_sigma_m: float  # from second differences along image rows (pixel-level noise)
-
-    @property
-    def plane_rel(self) -> float:
-        return self.plane_sigma_m / self.range_m
-
-    @property
-    def local_rel(self) -> float:
-        return self.local_sigma_m / self.range_m
-
-
-def floor_noise(cloud: OrganizedCloud, view: View, config: SegmentationConfig = SegmentationConfig()) -> FloorNoise:
-    """Two estimates of depth noise from the floor, which is flat to a few mm.
-
-    The spread around the RANSAC plane is an upper bound (it also contains the
-    floor's own unevenness and bedding). The local estimate takes, for three
-    horizontally adjacent floor pixels, the middle range minus the mean of its
-    neighbours: on a flat surface that is ~0, and for independent noise its
-    variance is 1.5 sigma^2."""
-    valid = cloud.valid
+def recorded_quality(
+    cloud: OrganizedCloud, view: View, config: SegmentationConfig = SegmentationConfig()
+) -> tuple[FloorNoise, float]:
+    """Floor noise and edge density of one recorded view (see ``geometry.quality``)."""
     rng_m = np.linalg.norm(cloud.xyz, axis=2)
-    usable = valid & (rng_m > config.min_range_m) & (rng_m < config.max_range_m)
-    points = cloud.xyz[usable]
-    plane, _ = fit_floor(points, _EXPECTED_UP[view], config)
-    dist = np.where(usable, cloud.xyz @ plane.normal + plane.d, np.inf)
-    floor = usable & (np.abs(dist) < config.floor_inlier_m)
-    if floor.sum() < 1_000:
+    usable = cloud.valid & (rng_m > config.min_range_m) & (rng_m < config.max_range_m)
+    plane, _ = fit_floor(cloud.xyz[usable], _EXPECTED_UP[view], config)
+    noise = floor_noise(cloud, plane, config.floor_inlier_m, config.min_range_m, config.max_range_m)
+    if noise is None:
         raise SegmentationError("too few floor pixels to measure noise")
-    d = dist[floor]
-    plane_sigma = 1.4826 * float(np.median(np.abs(d - np.median(d))))
-    trio = floor[:, :-2] & floor[:, 1:-1] & floor[:, 2:]
-    second = rng_m[:, 1:-1] - 0.5 * (rng_m[:, :-2] + rng_m[:, 2:])
-    s = second[trio]
-    local_sigma = 1.4826 * float(np.median(np.abs(s - np.median(s)))) / np.sqrt(1.5)
-    return FloorNoise(view, float(np.median(rng_m[floor])), plane_sigma, local_sigma)
+    return noise, edge_density(cloud)
 
 
 # ---- scoring degraded features -------------------------------------------------------
@@ -229,6 +207,10 @@ def score_level(
     herd: str, p: Perturbation, y: np.ndarray, clean_pred: np.ndarray, degraded_pred: np.ndarray, mean_pred: np.ndarray,
 ) -> LevelResult:
     ok = np.isfinite(degraded_pred)
+    if ok.sum() < RECAL_ANIMALS + 10:  # too few animals left to score: the level is a failure
+        nan = Interval(float("nan"), float("nan"), float("nan"))
+        return LevelResult(herd, p, int(ok.sum()), int((~ok).sum()), nan, nan, float("nan"), float("nan"),
+                           float("nan"), float("nan"))
     yk, ck, dk = y[ok], clean_pred[ok], degraded_pred[ok]
     err_d, err_c = np.abs(dk - yk), np.abs(ck - yk)
     return LevelResult(
@@ -239,13 +221,18 @@ def score_level(
     )
 
 
-def tolerated_level(results: list[LevelResult], kind: str, tolerance_kg: float = TOLERANCE_KG) -> float | None:
+def tolerated_level(
+    results: list[LevelResult], kind: str, tolerance_kg: float = TOLERANCE_KG, recalibrated: bool = False,
+) -> float | None:
     """Largest level of ``kind`` (by magnitude) up to which every level keeps the
-    upper CI bound of the MAE increase within ``tolerance_kg`` and loses no animal."""
+    upper CI bound of the MAE increase within ``tolerance_kg`` and loses no animal.
+    With ``recalibrated``, the point estimate of the increase after the herd
+    recalibration is compared instead (a farm calibrates with its own camera)."""
     levels = sorted((r for r in results if r.perturbation.kind == kind), key=lambda r: abs(r.perturbation.level))
     best = None
     for r in levels:
-        if r.n_failed or r.delta_mae.high > tolerance_kg:
+        worse = r.mae_recal - r.mae_recal_clean if recalibrated else r.delta_mae.high
+        if r.n_failed or not worse <= tolerance_kg:
             break
         best = abs(r.perturbation.level)
     return best
@@ -280,7 +267,8 @@ def score_herd(
         Xd = np.full_like(Xc, np.nan)
         ids = clean["animal_id"].astype(str)
         present = ids.isin(rows.index).to_numpy()
-        Xd[present] = rows.loc[ids[present], list(columns)].to_numpy(float)
+        if present.any():  # at the worst levels no animal is left, and neither are feature columns
+            Xd[present] = rows.loc[ids[present], list(columns)].to_numpy(float)
         out.append(score_level(herd, p, y, clean_pred, oof_on(models, Xd, seeds), mean_pred))
     return out
 
@@ -290,20 +278,47 @@ def floor_noise_frame(records: tuple[AnimalRecord, ...]) -> pd.DataFrame:
     for record in records:
         for view, path in record.view_paths.items():
             try:
-                f = floor_noise(read_organized_cloud(path), view)
+                f, edges = recorded_quality(read_organized_cloud(path), view)
             except SegmentationError:
                 continue
             rows.append({"herd": record.herd, "animal_id": record.animal_id, "view": view.value, "range_m": f.range_m,
                          "plane_sigma_m": f.plane_sigma_m, "local_sigma_m": f.local_sigma_m,
-                         "plane_rel": f.plane_rel, "local_rel": f.local_rel})
+                         "plane_rel": f.plane_rel, "local_rel": f.local_rel, "edge_density": edges})
     return pd.DataFrame(rows)
+
+
+QUALITY_LEVELS = (Perturbation("noise", 0.0), Perturbation("noise", 0.005), Perturbation("noise", 0.01),
+                  Perturbation("dropout", 0.1), Perturbation("dropout", 0.2))
+
+
+def _quality_rows(record: AnimalRecord) -> list[dict[str, object]]:
+    clouds = {view: read_organized_cloud(path) for view, path in record.view_paths.items()}
+    rows = []
+    for p in QUALITY_LEVELS:
+        degraded = perturb_views(clouds, p, record.key)
+        try:
+            _, traces = analyse_clouds(degraded)
+            reasons = quality_reasons([view_quality(degraded[v], v, t.result.floor) for v, t in traces.items()])
+            outcome = "flagged" if reasons else "passed"
+        except (SegmentationError, ValueError):
+            outcome = "refused"
+        rows.append({"herd": record.herd, "animal_id": record.animal_id, "kind": p.kind, "level": p.level,
+                     "outcome": outcome})
+    return rows
+
+
+def quality_check_frame(records: tuple[AnimalRecord, ...], workers: int = 4) -> pd.DataFrame:
+    """What the per-scan recording check (``geometry.quality``) says on clean
+    and degraded clouds of every animal."""
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        return pd.DataFrame([row for rows in pool.map(_quality_rows, records, chunksize=2) for row in rows])
 
 
 def _pct(x: float, digits: int = 1) -> str:
     return f"{x * 100:.{digits}f} %"
 
 
-def sensor_markdown(results: list[LevelResult], floor: pd.DataFrame) -> str:
+def sensor_markdown(results: list[LevelResult], floor: pd.DataFrame, quality: pd.DataFrame | None = None) -> str:
     df = results_frame(results)
     lines = [
         "# Permissible depth-sensor error",
@@ -325,12 +340,27 @@ def sensor_markdown(results: list[LevelResult], floor: pd.DataFrame) -> str:
     lines += ["", "Medians over animals. The spread around the plane includes floor unevenness and bedding, so it "
               "is an upper bound; the local estimate (second differences of adjacent floor pixels) is closer to "
               "pixel noise but still includes fine floor texture.", ""]
-    lines += ["## Tolerated error", "", "| herd | random noise (σ) | depth scale error | lost pixels |", "|---|---:|---:|---:|"]
+    lines += ["## Tolerated error", "",
+              "| herd | herd calibration | random noise (σ) | depth scale error | lost pixels |", "|---|---|---:|---:|---:|"]
     for herd in df.herd.unique():
         hr = [r for r in results if r.herd == herd]
-        cells = [tolerated_level(hr, k) for k in KINDS]
-        lines.append(f"| {herd} | " + " | ".join("below the first level" if c is None else f"≤ {_pct(c, 2 if c < 0.01 else 1)}"
-                                                for c in cells) + " |")
+        for recal in (False, True):
+            cells = [tolerated_level(hr, k, recalibrated=recal) for k in KINDS]
+            lines.append(f"| {herd} | {'after recalibration' if recal else 'none'} | " + " | ".join(
+                "below the first level" if c is None else f"≤ {_pct(c, 2 if c < 0.01 else 1)}" for c in cells) + " |")
+    if quality is not None and len(quality):
+        lines += ["", "## Per-scan recording check", "",
+                  f"Every scan now measures floor noise and edge density in each view (`cattle3d.geometry.quality`) and "
+                  f"is flagged above {MAX_FLOOR_NOISE_REL * 100:g} % of range or {MAX_EDGE_DENSITY:g}. Recorded maxima over "
+                  f"all views of both herds: floor noise {floor.local_rel.max() * 100:.2f} %, edge density "
+                  f"{floor.edge_density.max():.2f}. Outcome per animal:", "",
+                  "| herd | recording | passed | flagged | refused |", "|---|---|---:|---:|---:|"]
+        for (herd, kind, level), g in quality.groupby(["herd", "kind", "level"], sort=False):
+            c = g.outcome.value_counts()
+            lines.append(f"| {herd} | {Perturbation(kind, level).label if level else 'as recorded'} | {c.get('passed', 0)} "
+                         f"| {c.get('flagged', 0)} | {c.get('refused', 0)} |")
+        lines += ["", "The limits were chosen on these same animals, between the tolerated and the first harmful "
+                  "level, so the rates are in-sample."]
     lines += ["", "## All levels", "",
               "| herd | error | animals scored | lost | MAE, kg [95 % CI] | ΔMAE vs clean, kg [95 % CI] | bias, kg "
               "| MAE after recalibration (clean), kg | predict-mean MAE, kg |",
