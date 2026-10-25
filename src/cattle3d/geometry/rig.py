@@ -117,9 +117,10 @@ def median_rig(rigs: list[Rig]) -> Rig:
     return Rig(out)
 
 
-def _refine(side: np.ndarray, tree: cKDTree, target: np.ndarray) -> np.ndarray:
+def _refine(side: np.ndarray, tree: cKDTree, target: np.ndarray) -> tuple[np.ndarray, float]:
     """Translation-only ICP onto the top view where the surfaces overlap (the
-    upper flanks), so a station whose cameras moved a little still lines up."""
+    upper flanks), so a station whose cameras moved a little still lines up.
+    Returns the shift to apply and the size of the shift the fit asked for."""
     shift = np.zeros(3)
     for radius in (0.25, 0.18, 0.12, 0.08, 0.06, 0.05, 0.05, 0.05):
         dist, idx = tree.query(side + shift, distance_upper_bound=radius)
@@ -127,25 +128,83 @@ def _refine(side: np.ndarray, tree: cKDTree, target: np.ndarray) -> np.ndarray:
         if hit.sum() < 200:
             break
         shift += np.median(target[idx[hit]] - (side[hit] + shift), axis=0)
-    return shift if np.linalg.norm(shift) <= MAX_REFINE_M else np.zeros(3)
+    size = float(np.linalg.norm(shift))
+    return (shift if size <= MAX_REFINE_M else np.zeros(3)), size
 
 
-def merged_body_points(
+# Thresholds of the same-animal check. Chosen on the two public herds (195
+# animals, station calibration as the demo uses it): 2.6 % of genuine scans
+# fail it, while 72 % of scans with one view taken from another animal of the
+# same herd and 81 % with three different animals are caught. In-sample, so
+# treat these rates as optimistic.
+MIN_FOOTPRINT_SHARE = 0.70
+MAX_BACK_GAP_M = 0.15
+MAX_SHIFT_M = 0.18
+# Far beyond anything a genuine scan showed (smallest share 0.56, largest gap
+# 0.16 m): a cloud in the wrong slot, or another animal. No weight is given.
+CONTRADICT_FOOTPRINT_SHARE = 0.40
+CONTRADICT_BACK_GAP_M = 0.25
+_GRID_M = 0.03
+
+
+@dataclass(frozen=True)
+class MergedViews:
+    """The three views in the top view's body frame, and how well they agree."""
+
+    points: np.ndarray  # (N, 3)
+    view_index: np.ndarray  # (N,) index into (LEFT, RIGHT, TOP)
+    shift_m: float  # largest correction the side views needed to meet the top view
+    footprint_share: float  # smallest share of a side view's body inside the top view's footprint
+    back_gap_m: float  # largest median gap between a side view's and the top view's back line
+
+    @property
+    def contradictory(self) -> bool:
+        return self.footprint_share < CONTRADICT_FOOTPRINT_SHARE or self.back_gap_m > CONTRADICT_BACK_GAP_M
+
+    @property
+    def same_animal(self) -> bool:
+        return (self.footprint_share >= MIN_FOOTPRINT_SHARE and self.back_gap_m <= MAX_BACK_GAP_M
+                and self.shift_m <= MAX_SHIFT_M)
+
+
+def _back_line(points: np.ndarray, step: float = 0.05) -> dict[int, float]:
+    bins = np.floor(points[:, 0] / step).astype(int)
+    return {int(k): float(np.percentile(points[bins == k, 2], 95)) for k in np.unique(bins) if (bins == k).sum() > 20}
+
+
+def merge_views(
     clouds: dict[View, OrganizedCloud], traces: dict[View, SegmentationTrace], rig: Rig, refine: bool = True,
-) -> tuple[np.ndarray, np.ndarray]:
-    """All three views' animal points in the top view's body frame, and the
-    view index of each point (order of ``(LEFT, RIGHT, TOP)``)."""
+) -> MergedViews:
+    """All three views' animal points in the top view's body frame, with the
+    checks that they show one animal: the side views must need only a small
+    correction to meet the top view, lie inside its footprint, and see the
+    same back line. Views of different animals stand in different places."""
     top_cam = clouds[View.TOP].xyz[traces[View.TOP].animal]
     rot, shift = body_axes(top_cam, traces[View.TOP].result.floor)
+    top = top_cam @ rot.T + shift
     tree = cKDTree(top_cam[::2]) if refine else None
-    parts, ids = [], []
+    cells = np.floor(top[:, :2] / _GRID_M).astype(int)
+    occupied = {(int(i) + di, int(j) + dj) for i, j in set(map(tuple, cells)) for di in (-1, 0, 1) for dj in (-1, 0, 1)}
+    top_back = _back_line(top)
+    parts, ids, shifts, shares, gaps = [], [], [], [], []
     for i, view in enumerate((View.LEFT, View.RIGHT, View.TOP)):
-        p = clouds[view].xyz[traces[view].animal]
-        if view is not View.TOP:
+        if view is View.TOP:
+            p = top
+        else:
             r, t = rig.to_top[view]
-            p = p @ r.T + t
+            p = clouds[view].xyz[traces[view].animal] @ r.T + t
             if tree is not None:
-                p = p + _refine(p[::3], tree, top_cam[::2])
-        parts.append(p @ rot.T + shift)
+                move, size = _refine(p[::3], tree, top_cam[::2])
+                p = p + move
+                shifts.append(size)
+            p = p @ rot.T + shift
+            body = p[p[:, 2] > 0.5][::5]
+            inside = [(int(a), int(b)) in occupied for a, b in np.floor(body[:, :2] / _GRID_M).astype(int)]
+            shares.append(float(np.mean(inside)) if inside else 0.0)
+            side_back = _back_line(p)
+            common = [abs(side_back[k] - z) for k, z in top_back.items() if k in side_back]
+            gaps.append(float(np.median(common)) if len(common) >= 5 else 1.0)
+        parts.append(p)
         ids.append(np.full(len(p), i, np.uint8))
-    return np.concatenate(parts), np.concatenate(ids)
+    return MergedViews(np.concatenate(parts), np.concatenate(ids),
+                       max(shifts, default=0.0), min(shares), max(gaps))

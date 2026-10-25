@@ -18,9 +18,9 @@ import numpy as np
 from scipy.spatial import ConvexHull, QhullError
 
 from cattle3d.features.geometry_features import N_SLICES, trunk_interval
-from cattle3d.geometry.rig import Rig, merged_body_points
+from cattle3d.geometry.rig import MergedViews
 from cattle3d.geometry.segment import SegmentationTrace
-from cattle3d.types import OrganizedCloud, View
+from cattle3d.types import View
 
 MAX_POINTS = 24_000
 VIEW_ORDER = (View.LEFT, View.RIGHT, View.TOP)
@@ -66,18 +66,15 @@ def _hull(section: np.ndarray) -> list[list[float]]:
 
 
 def scan_preview(
-    traces: dict[View, SegmentationTrace],
-    clouds: dict[View, OrganizedCloud] | None = None,
-    rig: Rig | None = None,
-    seed: int = 0,
+    traces: dict[View, SegmentationTrace], merged: MergedViews | None = None, seed: int = 0,
 ) -> dict[str, object]:
-    """With the station calibration (``rig``) the three views are merged into
-    one animal; without it only the top view's points are shown."""
+    """With the views merged (needs the station calibration) the whole animal
+    is shown; without it only the top view's points."""
     top = traces[View.TOP].result.body_points
     lo, hi = trunk_interval(top)
     centre = 0.5 * (lo + hi)
-    if rig is not None and clouds is not None:
-        pts, view_of = merged_body_points(clouds, traces, rig)
+    if merged is not None:
+        pts, view_of = merged.points, merged.view_index
     else:
         pts, view_of = top, np.full(len(top), VIEW_ORDER.index(View.TOP), np.uint8)
     pts = pts.copy()
@@ -106,7 +103,13 @@ def scan_preview(
         "point_view": base64.b64encode(view_of.astype(np.uint8).tobytes()).decode(),
         "view_order": [v.value for v in VIEW_ORDER],
         "n_points": int(len(mm)),
-        "views_merged": rig is not None and clouds is not None,
+        "views_merged": merged is not None,
+        "view_agreement": None if merged is None else {
+            "same_animal": merged.same_animal,
+            "footprint_share": round(merged.footprint_share, 3),
+            "back_gap_m": round(merged.back_gap_m, 3),
+            "shift_m": round(merged.shift_m, 3),
+        },
         "trunk_m": [round(float(lo - centre), 3), round(float(hi - centre), 3)],
         "slices": slices,
     }

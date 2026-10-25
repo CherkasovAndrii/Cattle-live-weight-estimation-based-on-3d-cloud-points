@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#17262b">
+<meta name="theme-color" content="#05060f">
 <title>cattle3d · Зважування без ваг</title>
 <meta name="description" content="Хмарний сервіс безконтактного зважування великої рогатої худоби за трьома хмарами точок">
 <link rel="stylesheet" href="app.css">
@@ -60,6 +60,7 @@
         <input type="file" id="file" accept=".ply" hidden>
         <input type="file" id="files3" accept=".ply" multiple hidden>
         <button type="button" class="link" id="pick3">Обрати всі три файли разом</button>
+        <p class="hint warn" id="pick-note" hidden>З назв файлів не видно, де ліва, права й верхня хмара, тому їх розкладено по черзі. Перевірте слоти або перетягніть кожен файл на свою камеру.</p>
 
         <div class="samples" id="samples-box" hidden>
           <h3>Або корова з відкритої бази</h3>
@@ -185,6 +186,7 @@
   </form>
 </dialog>
 
+<script src="../space.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -144,8 +144,13 @@ def _rig(text: str | None) -> Rig | None:
     if not text:
         return None
     try:
-        return Rig.from_json(json.loads(text))
-    except (ValueError, KeyError, TypeError) as exc:  # JSONDecodeError is a ValueError
+        data = json.loads(text)
+        if not isinstance(data, dict):
+            raise ValueError('expected an object {"left": ..., "right": ...}')
+        return Rig.from_json(data)
+    except KeyError as exc:
+        raise HTTPException(422, f"rig: missing {exc}") from exc
+    except (ValueError, TypeError) as exc:  # JSONDecodeError is a ValueError
         raise HTTPException(422, f"rig: {exc}") from exc
 
 
@@ -247,7 +252,7 @@ def create_app(
                 service.scan_with_preview, herd_id, animal_tag, clouds, scale_weight_kg, station
             )
             return ScanResultOut(**asdict(result), preview=shown)
-        result = await run_in_threadpool(service.scan, herd_id, animal_tag, clouds, scale_weight_kg)
+        result = await run_in_threadpool(service.scan, herd_id, animal_tag, clouds, scale_weight_kg, station)
         return ScanResultOut(**asdict(result))
 
     @app.get("/v1/herds/{herd_id}/scans", tags=["scans"], dependencies=v1)

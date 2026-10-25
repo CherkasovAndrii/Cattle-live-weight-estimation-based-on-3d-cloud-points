@@ -242,6 +242,12 @@ def test_website_is_served_at_the_root_without_hiding_the_api(model, tmp_path, t
     page = c.get("/")
     assert page.status_code == 200 and "<title>Cattle3D Live Weight</title>" in page.text
     assert c.get("/site.js").status_code == 200
+    for script in ("space.js", "hero.js"):  # the page and the farm app load them
+        assert f'src="{script}"' in page.text and c.get(f"/{script}").status_code == 200
+    assert 'src="../space.js"' in c.get("/app/").text
+    points = c.get("/img/cow70_points.bin").content  # hero cloud: int16 x, y, z mm + uint8 view + pad
+    assert len(points) % 8 == 0 and len(points) // 8 > 10_000
+    assert set(points[6::8]) == {0, 1, 2}
     assert c.get("/figures/uk/09_within_herd_oof.png").content == b"\x89PNG"
     assert c.get("/health").json()["status"] == "ok"
     assert c.get("/v1/herds").status_code == 401  # the site does not open the API
