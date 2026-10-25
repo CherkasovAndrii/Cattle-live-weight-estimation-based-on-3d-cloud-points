@@ -10,8 +10,13 @@
   const STATUS_UK = { trusted: "Довірено", flagged: "Позначено", refused: "Відмова" };
   const REASONS_UK = [
     [/^herd not calibrated.*/, "стадо не відкалібровано: зважте 20 тварин на вагах і відкалібруйте"],
+    [/^the three views do not seem to show the same animal.*/, "три хмари, схоже, від різних тварин: вони не сходяться за калібруванням станції; проскануйте тварину ще раз"],
     [/^body volume outside the training range$/, "об’єм тулуба поза діапазоном, на якому навчено модель"],
     [/^too few points in (left|right|top) view$/, (m, v) => `замало точок у кадрі: ${VIEW_UK[v].toLowerCase()}`],
+    [/^rescan: the three views contradict each other.*$/, "хмари суперечать одна одній: файл не в тому слоті або хмари від різних тварин. Перевірте, що ліва, права й верхня хмари стоять на своїх місцях"],
+    [/^rescan: (left|right|top): too few depth returns in range$/, (m, v) => `пересканувати: ${VIEW_UK[v].toLowerCase()} майже нічого не бачить у робочій зоні`],
+    [/^rescan: no surface large enough to be an animal$/, "пересканувати: в одному з кадрів не знайдено тварину"],
+    [/^rescan: (not enough points to fit a floor|no floor plane within the allowed tilt)$/, "пересканувати: в одному з кадрів не знайдено підлогу; можливо, файл не в тому слоті"],
     [/^rescan: (.*)$/, "пересканувати: $1"],
   ];
   const reasonUk = (r) => {
@@ -93,7 +98,11 @@
     const saved = store.get("cattle3d-herd");
     if (saved && [...sel.options].some((o) => o.value === saved)) sel.value = saved;
     herdId = Number(sel.value);
-    sel.addEventListener("change", () => { herdId = Number(sel.value); store.set("cattle3d-herd", sel.value); renderSamples(); });
+    sel.addEventListener("change", () => {
+      herdId = Number(sel.value); store.set("cattle3d-herd", sel.value);
+      if (sample && sample.herd_id !== herdId) { sample = null; for (const v of VIEWS) setFile(v, null); $("tag").value = ""; $("scale").value = ""; }
+      renderSamples(); updateGo();
+    });
     renderSamples();
   }
 
@@ -113,14 +122,19 @@
   $("files3").addEventListener("change", (e) => {
     // Files named after their view (…left…, …right…, …top…) go to that slot; others fill free slots in order.
     const list = [...e.target.files];
+    for (const v of VIEWS) setFile(v, null);
     for (const f of list) {
       const v = VIEWS.find((x) => new RegExp(x, "i").test(f.webkitRelativePath || f.name));
-      if (v) setFile(v, f);
+      if (v && !files[v]) setFile(v, f);
     }
-    for (const f of list) if (!Object.values(files).includes(f)) { const v = VIEWS.find((x) => !files[x]); if (v) setFile(v, f); }
+    const guessed = list.filter((f) => !Object.values(files).includes(f));
+    for (const f of guessed) { const v = VIEWS.find((x) => !files[x]); if (v) setFile(v, f); }
+    // Dataset files are often all called cloud.ply: then the order is a guess and the operator must check it.
+    $("pick-note").hidden = !guessed.length;
   });
 
   function setFile(view, blob, label) {
+    if (blob && !label) $("pick-note").hidden = true;
     files[view] = blob;
     if (!label) { sample = null; markSample(); }
     const slot = document.querySelector(`.slot[data-view="${view}"]`);
@@ -229,7 +243,7 @@
       if (xhr.status === 401) { finishSteps(null, false); $("up").hidden = true; askKey(); return; }
       if (xhr.status >= 300 || !body) {
         finishSteps(null, false);
-        showError(body && body.detail ? (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)) : `Помилка сервера ${xhr.status}`);
+        showError(errorText(xhr.status, body));
         return;
       }
       finishSteps(body.preview && body.preview.timing_ms, body.status !== "refused");
@@ -240,6 +254,20 @@
     xhr.send(form);
   });
 
+  const FIELD_UK = { animal_tag: "номер бирки", scale_weight_kg: "маса на вагах", left: "ліва хмара", right: "права хмара", top: "верхня хмара", rig: "калібрування" };
+  function errorText(status, body) {
+    const d = body && body.detail;
+    if (status === 413) return "Файл завеликий: хмара Kinect v2 важить близько 3,5 МБ, сервер приймає до 16 МБ.";
+    if (Array.isArray(d)) return d.map((e) => `Перевірте поле «${FIELD_UK[e.loc[e.loc.length - 1]] || e.loc.join(".")}»: ${e.msg}`).join("; ");
+    if (typeof d === "string") {
+      const m = d.match(/^(left|right|top) cloud: (.*)$/);
+      if (m) return `${VIEW_UK[m[1]]}: файл не схожий на хмару точок Kinect (${m[2]}). Потрібен PLY-кадр 512×424.`;
+      const w = d.match(/^scale weight (.*) kg is outside (.*) kg$/);
+      if (w) return `Маса на вагах ${w[1]} кг поза межами ${w[2]} кг.`;
+      return d;
+    }
+    return `Помилка сервера ${status}`;
+  }
   function showError(text) { $("err").textContent = text; $("err").hidden = false; }
   function hideError() { $("err").hidden = true; }
 

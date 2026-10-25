@@ -174,7 +174,7 @@ def test_matrices_file_is_read(tmp_path):
 def test_three_views_merge_into_one_animal(side_scene_module, top_scene_module):  # noqa: F811
     """The same box seen by a top camera and by side cameras placed with a
     known rig must land on the top view's points once merged."""
-    from cattle3d.geometry.rig import Rig, merged_body_points
+    from cattle3d.geometry.rig import Rig, merge_views
     from cattle3d.pipeline import analyse_clouds
     from cattle3d.types import OrganizedCloud
 
@@ -182,7 +182,8 @@ def test_three_views_merge_into_one_animal(side_scene_module, top_scene_module):
               View.TOP: OrganizedCloud(top_scene_module)}
     _, traces = analyse_clouds(clouds)
     identity = Rig({View.LEFT: (np.eye(3), np.zeros(3)), View.RIGHT: (np.eye(3), np.zeros(3))})
-    pts, ids = merged_body_points(clouds, traces, identity, refine=False)
+    merged = merge_views(clouds, traces, identity, refine=False)
+    pts, ids = merged.points, merged.view_index
     n = [int((ids == i).sum()) for i in range(3)]
     assert n == [int(traces[v].animal.sum()) for v in (View.LEFT, View.RIGHT, View.TOP)]
     top = pts[ids == 2]
@@ -209,3 +210,57 @@ def test_preview_merges_views_with_the_herds_station_calibration(model, tmp_path
                                                        "rig": json.dumps(identity.to_json())},
                       files=_files(plys), headers=AUTH)
     assert explicit.status_code == 201 and explicit.json()["preview"]["views_merged"]
+
+
+# ---- the three views must show one animal ----------------------------------------------
+def _merged(share: float, gap: float, shift: float):
+    from cattle3d.geometry.rig import MergedViews
+
+    return MergedViews(np.zeros((3, 3)), np.array([0, 1, 2], np.uint8), shift, share, gap)
+
+
+def test_view_agreement_thresholds():
+    assert _merged(0.95, 0.03, 0.07).same_animal
+    assert not _merged(0.60, 0.03, 0.07).same_animal  # side body outside the top footprint
+    assert not _merged(0.95, 0.20, 0.07).same_animal  # another back line
+    assert not _merged(0.95, 0.03, 0.30).same_animal  # cameras would have to move 30 cm
+    assert not _merged(0.60, 0.03, 0.07).contradictory and _merged(0.10, 0.03, 0.07).contradictory
+
+
+def _station_client(model, tmp_path, merged, monkeypatch):  # noqa: F811
+    from cattle3d.geometry.rig import Rig
+    from cattle3d.pipeline import features_from_clouds
+
+    service = WeightService(model, Store(tmp_path / "farm.sqlite3"), extract=features_from_clouds)
+    c = TestClient(create_app(service, api_key=KEY))
+    herd = _herd(c)
+    service.station_rigs[herd] = Rig({View.LEFT: (np.eye(3), np.zeros(3)), View.RIGHT: (np.eye(3), np.zeros(3))})
+    monkeypatch.setattr("cattle3d.api.service.merge_views", lambda clouds, traces, rig: merged)
+    return c, herd
+
+
+@pytest.mark.parametrize("preview", ["true", "false"])
+def test_views_of_different_animals_are_flagged(model, tmp_path, plys, monkeypatch, preview):  # noqa: F811
+    from cattle3d.api.service import MIXED_VIEWS
+
+    c, herd = _station_client(model, tmp_path, _merged(0.6, 0.05, 0.1), monkeypatch)
+    r = c.post(f"/v1/herds/{herd}/scans", data={"animal_tag": "UA-1", "preview": preview}, files=_files(plys), headers=AUTH)
+    assert r.status_code == 201 and r.json()["status"] == "flagged" and MIXED_VIEWS in r.json()["reasons"]
+    assert r.json()["weight_kg"] is not None
+
+
+def test_contradictory_views_are_refused(model, tmp_path, plys, monkeypatch):  # noqa: F811
+    from cattle3d.api.service import CONTRADICTORY_VIEWS
+
+    c, herd = _station_client(model, tmp_path, _merged(0.0, 0.6, 0.0), monkeypatch)
+    r = c.post(f"/v1/herds/{herd}/scans", data={"animal_tag": "UA-1", "preview": "true"}, files=_files(plys), headers=AUTH)
+    body = r.json()
+    assert body["status"] == "refused" and body["weight_kg"] is None and body["preview"] is None
+    assert body["reasons"] == [f"rescan: {CONTRADICTORY_VIEWS}"]
+
+
+def test_rig_field_must_be_an_object(real_client, plys):  # noqa: F811
+    herd = _herd(real_client)
+    for bad in ("[1, 2]", "{}", '{"left": 1}'):
+        r = real_client.post(f"/v1/herds/{herd}/scans", data={"animal_tag": "UA-1", "rig": bad}, files=_files(plys), headers=AUTH)
+        assert r.status_code == 422 and r.json()["detail"].startswith("rig:")
