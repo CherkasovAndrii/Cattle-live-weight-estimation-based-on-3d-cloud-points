@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cattle3d"
+version = "0.1.0"
+description = "Non-contact cattle live-weight estimation from left, right and top depth point clouds"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "scikit-learn>=1.4",
+    "lightgbm>=4.0",
+    "pandas>=2.1",
+    "openpyxl>=3.1",
+    "joblib>=1.3",
+]
+
+[project.optional-dependencies]
+figures = ["matplotlib>=3.8"]
+api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+demo = ["qrcode>=7.4"]
+dev = ["pytest>=8", "matplotlib>=3.8", "fastapi>=0.110", "python-multipart>=0.0.9", "httpx>=0.27"]
+
+[project.scripts]
+cattle3d = "cattle3d.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.setuptools.package-data]
+"cattle3d.resources" = ["*.csv"]
+"cattle3d.web" = ["static/*", "static/img/*", "static/app/*"]
