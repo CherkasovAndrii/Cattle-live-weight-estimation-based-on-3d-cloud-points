@@ -12,8 +12,14 @@ genuine out-of-sample prediction, like on a new farm after calibration.
 
 from __future__ import annotations
 
+import atexit
 import json
+import re
+import shutil
 import socket
+import subprocess
+import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,7 +28,9 @@ import pandas as pd
 
 from cattle3d.api.service import WeightService
 from cattle3d.api.store import Store
+from cattle3d.geometry.rig import Rig, median_rig, read_matrices, rig_from_aligned
 from cattle3d.io.datasets import HERD_A, HERD_B, load_cowdatabase, load_cowdatabase2
+from cattle3d.io.ply import read_points
 from cattle3d.modeling.calibration import RECOMMENDED_CALIBRATION_ANIMALS
 from cattle3d.modeling.weight_model import WeightModel
 from cattle3d.types import AnimalRecord, View
@@ -42,6 +50,7 @@ class Sample:
     animal_id: str
     scale_weight_kg: float
     paths: dict[View, Path]
+    rig: Rig | None = None
 
 
 def choose_holdout(table: pd.DataFrame, herd: str, seed: int = 0) -> tuple[list[str], list[str]]:
@@ -75,14 +84,59 @@ def demo_model(table: pd.DataFrame, holdout: dict[str, list[str]], path: Path) -
     return model
 
 
-def lan_address() -> str:
-    """This computer's address on the local network (no packet is sent)."""
+def lan_addresses() -> list[str]:
+    """This computer's IPv4 addresses a phone could reach, the one on the
+    default route first (no packet is sent). Virtual adapters (WSL, Hyper-V,
+    VirtualBox, VPN) also show up, which is why all of them are printed."""
+    found: list[str] = []
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("10.255.255.255", 1))
-            return s.getsockname()[0]
+            found.append(s.getsockname()[0])
     except OSError:
-        return socket.gethostbyname(socket.gethostname())
+        pass
+    try:
+        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+    except OSError:
+        infos = []
+    for info in infos:
+        address = str(info[4][0])
+        if address not in found:
+            found.append(address)
+    usable = [a for a in found if not a.startswith(("127.", "169.254.", "0."))]
+    return usable or ["127.0.0.1"]
+
+
+def start_tunnel(port: int, timeout_s: float = 40.0) -> tuple[str, "subprocess.Popen[str]"] | None:
+    """A public https address for this computer through a Cloudflare quick
+    tunnel (no account), so a phone on any network, mobile data included,
+    reaches the demo. Needs ``cloudflared`` on PATH; None when it is missing
+    or does not answer in time."""
+    exe = shutil.which("cloudflared")
+    if exe is None:
+        return None
+    proc = subprocess.Popen(
+        [exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"],
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
+    )
+    found: list[str] = []
+
+    def read() -> None:
+        assert proc.stderr is not None
+        for line in proc.stderr:  # keep draining so the pipe never fills
+            match = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+            if match and not found:
+                found.append(match.group(0))
+
+    threading.Thread(target=read, daemon=True).start()
+    deadline = time.monotonic() + timeout_s
+    while not found and proc.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.2)
+    if not found:
+        proc.terminate()
+        return None
+    atexit.register(proc.terminate)
+    return found[0], proc
 
 
 class Demo:
@@ -96,7 +150,8 @@ class Demo:
             "herds": [{"id": hid, "key": herd, **HERDS[herd]} for herd, hid in self.herds.items()],
             "samples": [
                 {"id": s.id, "herd_id": s.herd_id, "herd": s.herd, "animal_id": s.animal_id,
-                 "breed": HERDS[s.herd]["breed"], "scale_weight_kg": s.scale_weight_kg}
+                 "breed": HERDS[s.herd]["breed"], "scale_weight_kg": s.scale_weight_kg,
+                 "rig": None if s.rig is None else s.rig.to_json()}
                 for s in self.samples.values()
             ],
             "phone_url": self.phone_url,
@@ -116,6 +171,32 @@ class Demo:
             return None
         image = qrcode.make(self.phone_url, image_factory=qrcode.image.svg.SvgPathImage, border=2)
         return image.to_string(encoding="unicode")
+
+
+def capture_rig(record: AnimalRecord) -> Rig | None:
+    """The station calibration of the capture session this animal was scanned
+    in, from what the dataset ships: CowDatabase2 merged clouds (``aligned.ply``
+    next to ``raw_data``) or CowDatabase ``Matrices/<file>.matrices``."""
+    left = record.view_paths[View.LEFT]
+    try:
+        if record.herd == HERD_A:
+            aligned = left.parents[2] / "aligned.ply"
+            if aligned.is_file():
+                raw = {v: read_points(p) for v, p in record.view_paths.items()}
+                return rig_from_aligned(raw, read_points(aligned))
+        elif record.herd == HERD_B:
+            matrices = left.parents[1] / "Matrices" / f"{left.stem}.matrices"
+            if matrices.is_file():
+                return read_matrices(matrices)
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def herd_rig(records: list[AnimalRecord], n: int = 5) -> Rig | None:
+    """One calibration for the herd's station: the median over a few captures."""
+    rigs = [r for rec in records[:: max(1, len(records) // n)][:n] if (r := capture_rig(rec)) is not None]
+    return median_rig(rigs) if rigs else None
 
 
 def _seed_farm(service: WeightService, herd: str, table: pd.DataFrame, reference: list[str]) -> int:
@@ -175,8 +256,12 @@ def prepare(
         root, load = loaders[herd]
         records: dict[str, AnimalRecord] = {a.animal_id: a for a in load(Path(root)).animals}  # type: ignore[arg-type]
         herds[herd] = _seed_farm(service, herd, table, reference)
+        rig = herd_rig(list(records.values()))
+        if rig is not None:
+            service.station_rigs[herds[herd]] = rig
         for animal_id in demo_ids:
             if animal_id in records:
                 a = records[animal_id]
-                samples.append(Sample(f"{herd}-{animal_id}", herds[herd], herd, animal_id, a.weight_kg, a.view_paths))
+                samples.append(Sample(f"{herd}-{animal_id}", herds[herd], herd, animal_id, a.weight_kg, a.view_paths,
+                                      capture_rig(a)))
     return service, Demo(samples, herds, phone_url)

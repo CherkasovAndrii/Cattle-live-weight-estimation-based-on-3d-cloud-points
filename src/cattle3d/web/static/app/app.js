@@ -204,6 +204,7 @@
     const scale = parseFloat($("scale").value);
     if (scale > 0) form.append("scale_weight_kg", String(scale));
     form.append("preview", "true");
+    if (sample && sample.rig) form.append("rig", JSON.stringify(sample.rig)); // calibration of the session it was captured in
     for (const v of VIEWS) form.append(v, files[v], `${v}.ply`);
     const total = VIEWS.reduce((a, v) => a + files[v].size, 0);
 
@@ -294,26 +295,36 @@
   const viewer = (() => {
     const canvas = $("view3d");
     const ctx = canvas.getContext("2d");
-    let pts = null; let order = null; let slices = []; let zmax = 1;
-    let yaw = -0.6, pitch = 0.62, dist = 3.6, auto = true;
-    let showPoints = true, showSlices = true, raf = 0, last = 0;
+    let pts = null; let order = null; let slices = []; let zmax = 1; let viewOf = null; let viewNames = [];
+    let yaw = -0.6, pitch = 0.42, dist = 4.2, auto = true;
+    let showPoints = true, showSlices = false, byCamera = false, raf = 0, last = 0;
+    const bytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+    const CAMERA_RGB = { left: [90, 150, 255], right: [70, 200, 130], top: [235, 150, 60] };
 
     function load(p) {
-      const bin = atob(p.top_points_mm);
-      const i16 = new Int16Array(new Uint8Array([...bin].map((c) => c.charCodeAt(0))).buffer);
+      const i16 = new Int16Array(bytes(p.points_mm).buffer);
       pts = new Float32Array(i16.length);
       for (let i = 0; i < i16.length; i++) pts[i] = i16[i] / 1000;
+      viewOf = bytes(p.point_view); viewNames = p.view_order;
       order = new Uint32Array(pts.length / 3).map((_, i) => i);
       zmax = 0;
       for (let i = 2; i < pts.length; i += 3) zmax = Math.max(zmax, pts[i]);
       slices = p.slices;
-      auto = true; dist = 3.6; yaw = -0.6; pitch = 0.62;
+      $("view3d-note").textContent = p.views_merged
+        ? "Три хмари зведено в одну систему координат за калібруванням станції."
+        : "Для цієї ферми станцію не відкалібровано, тому показано лише верхній ракурс.";
+      $("t-cams").hidden = !p.views_merged;
+      auto = true; dist = 4.2; yaw = -0.6; pitch = 0.42;
       start();
     }
 
-    function colour(h, shade) { // height ramp: deep blue → teal → sand
-      const t = Math.min(1, Math.max(0, h / zmax));
-      const r = 40 + 190 * t * t, g = 90 + 120 * t, b = 140 + 40 * (1 - t);
+    function colour(i, shade) {
+      let r, g, b;
+      if (byCamera) [r, g, b] = CAMERA_RGB[viewNames[viewOf[i]]] || [200, 200, 200];
+      else { // hide tones: dark at the belly, light along the back
+        const t = Math.min(1, Math.max(0, pts[3 * i + 2] / zmax));
+        r = 70 + 175 * t; g = 42 + 135 * t; b = 30 + 95 * t * t;
+      }
       return `rgb(${(r * shade) | 0},${(g * shade) | 0},${(b * shade) | 0})`;
     }
 
@@ -367,8 +378,8 @@
         for (let k = 0; k < n; k++) {
           const i = order[k];
           const shade = 1.05 - 0.55 * Math.min(1, Math.max(0, (sd[i] - dmin) / dspan));
-          ctx.fillStyle = colour(pts[3 * i + 2], shade);
-          const r = Math.max(1.6, ss[i] * 0.014);
+          ctx.fillStyle = colour(i, shade);
+          const r = Math.max(1.5, ss[i] * 0.011);
           ctx.fillRect(sx[i] - r / 2, syy[i] - r / 2, r, r);
         }
       }
@@ -405,7 +416,8 @@
     canvas.addEventListener("wheel", (e) => { e.preventDefault(); dist = Math.min(9, Math.max(2.2, dist * (1 + e.deltaY * 0.001))); start(); }, { passive: false });
     canvas.addEventListener("dblclick", () => { auto = true; start(); });
     window.addEventListener("resize", start);
-    for (const [id, set] of [["t-points", (v) => { showPoints = v; }], ["t-slices", (v) => { showSlices = v; }]]) {
+    for (const [id, set] of [["t-points", (v) => { showPoints = v; }], ["t-cams", (v) => { byCamera = v; }],
+      ["t-slices", (v) => { showSlices = v; }]]) {
       $(id).addEventListener("click", (e) => {
         const on = e.currentTarget.getAttribute("aria-pressed") !== "true";
         e.currentTarget.setAttribute("aria-pressed", String(on)); set(on); start();

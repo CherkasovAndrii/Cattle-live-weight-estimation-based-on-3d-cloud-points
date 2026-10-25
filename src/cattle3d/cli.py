@@ -197,7 +197,7 @@ def cmd_demo(args: argparse.Namespace) -> None:
         import uvicorn
 
         from cattle3d.api.app import create_app
-        from cattle3d.demo import lan_address, prepare
+        from cattle3d.demo import lan_addresses, prepare, start_tunnel
         from cattle3d.web import SITE_DIR
     except ImportError:
         sys.exit('the demo needs the API extra: pip install -e ".[api,demo]"')
@@ -206,12 +206,20 @@ def cmd_demo(args: argparse.Namespace) -> None:
 
     key = os.environ.get("CATTLE3D_API_KEY") or secrets.token_urlsafe(9)
     local_url = f"http://localhost:{args.port}/app/#key={key}"
+    phone_urls: list[tuple[str, str]] = []  # (how a phone reaches it, url)
     if args.public_url:  # a cloud deployment: phones open the server's public address
-        phone_url = f"{args.public_url.rstrip('/')}/app/#key={key}"
-    elif args.host in ("127.0.0.1", "localhost"):
-        phone_url = None
-    else:
-        phone_url = f"http://{lan_address()}:{args.port}/app/#key={key}"
+        phone_urls.append(("internet", args.public_url.rstrip("/")))
+    elif args.tunnel:
+        print("opening an internet address through cloudflared…", flush=True)
+        tunnel = start_tunnel(args.port)
+        if tunnel is None:
+            print("  cloudflared is not installed or did not answer; phones need the same Wi-Fi")
+        else:
+            phone_urls.append(("internet, any network", tunnel[0]))
+    if args.host not in ("127.0.0.1", "localhost"):
+        phone_urls += [("same Wi-Fi", f"http://{a}:{args.port}") for a in lan_addresses()]
+    phone_urls = [(how, f"{base}/app/#key={key}") for how, base in phone_urls]
+    phone_url = phone_urls[0][1] if phone_urls else None
     service, demo = prepare(
         Path(args.features), Path(args.model), Path(args.db),
         Path(args.cowdb2) if args.cowdb2 else None, Path(args.cowdb1) if args.cowdb1 else None, phone_url,
@@ -219,8 +227,9 @@ def cmd_demo(args: argparse.Namespace) -> None:
     app = create_app(service, key, SITE_DIR, Path(args.figures), demo=demo)
     print(f"\n  demo animals: {len(demo.samples)} (not seen by the demo model)")
     print(f"  computer: {local_url}")
+    for how, url in phone_urls:
+        print(f"  phone ({how}): {url}")
     if phone_url:
-        print(f"  phone: {phone_url}" if args.public_url else f"  phone (same Wi-Fi): {phone_url}")
         try:
             import qrcode
 
@@ -229,6 +238,11 @@ def cmd_demo(args: argparse.Namespace) -> None:
             qr.print_ascii(invert=True)
         except Exception:  # optional: no package or a console without block characters
             pass
+        if not args.public_url and len(phone_urls) and phone_urls[0][0] == "same Wi-Fi":
+            print("  If the phone does not open it: the computer's firewall must allow Python (Windows asks on the")
+            print("  first start; scripts\\run_demo.bat adds the rule), try the other addresses above, and note that")
+            print("  guest and university Wi-Fi often block devices from each other. Then use --tunnel")
+            print("  (needs cloudflared) or the phone's own hotspot.")
     print("  stop: Ctrl+C\n", flush=True)
     if not args.no_browser:
         webbrowser.open(local_url)
@@ -311,6 +325,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--figures", default=str(REPORTS / "figures" / "thesis"))
     p.add_argument("--public-url", help="address phones should open, e.g. https://cattle.example.org (cloud deployment)")
+    p.add_argument("--tunnel", action="store_true",
+                   help="also publish the demo at a temporary https address via cloudflared, for phones on any network")
     p.add_argument("--no-browser", action="store_true")
     p.set_defaults(func=cmd_demo)
     return parser

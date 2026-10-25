@@ -91,10 +91,20 @@ curl -H "X-API-Key: $KEY" -F animal_tag=UA-0042 \
 
 With the form field `preview=true` the response also carries `preview`
 (null for a refused scan): a depth thumbnail per view with the animal found in
-it, the top-view body points (base64 int16 millimetres, x along the body,
-y lateral, z height), the 64 trunk cross-sections that are integrated into the
-volume, the main body measures, and processing times. The farm web app draws
-its 3-D view from this; it adds about 160 KB.
+it, the body points (`points_mm`, base64 int16 millimetres, x along the body,
+y lateral, z height) with the camera of each point (`point_view`, base64
+uint8 indexing `view_order`), the 64 trunk cross-sections that are integrated
+into the volume, the main body measures, and processing times. The farm web
+app draws its 3-D view from this; it adds about 280 KB.
+
+The three views are merged into one animal (`views_merged: true`) when the
+station calibration is known: the form field `rig`, JSON
+`{"left": [[R row], [R row], [R row], [t]], "right": ...}` mapping each side
+camera into the top camera frame in metres, or else the calibration the server
+holds for the herd. A small translation-only alignment on the overlapping
+upper flanks absorbs cameras that moved a few centimetres. Without a
+calibration only the top view is shown. The weight never depends on it: every
+feature is computed inside one view.
 
 `cattle3d demo` adds three read-only routes for the defence demo:
 `GET /v1/demo` (demo farms and the held-out sample cows),
