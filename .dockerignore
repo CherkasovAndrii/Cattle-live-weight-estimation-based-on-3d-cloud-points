@@ -1,0 +1,8 @@
+.venv/
+.git/
+data/
+artifacts/
+thesis/
+**/__pycache__/
+*.egg-info/
+.pytest_cache/

@@ -191,3 +191,9 @@ button:disabled { opacity: 0.55; cursor: progress; }
   .kpis > div { padding-bottom: 12px; }
   .section, .band > .wrap { padding-block: 48px; }
 }
+
+/* Link to the farm app (/app/). */
+.app-cta { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem 1rem; margin: 0 0 1.2rem; color: var(--muted); }
+.app-btn { background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; padding: .7rem 1.1rem; border-radius: var(--radius); }
+.app-btn:hover { filter: brightness(1.1); }
+.nav .nav-app { color: var(--accent); font-weight: 600; }

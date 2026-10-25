@@ -12,7 +12,7 @@ mapping of service errors to status codes. No business logic lives here.
 import hmac
 from dataclasses import asdict
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import (
     Depends,
@@ -24,7 +24,7 @@ from fastapi import (
     Security,
     UploadFile,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -33,6 +33,7 @@ from starlette.concurrency import run_in_threadpool
 from cattle3d import __version__
 from cattle3d.api.service import InvalidRequestError, NotFoundError, WeightService
 from cattle3d.api.store import Calibration, DuplicateError, Scan, Store
+from cattle3d.demo import Demo
 from cattle3d.io.ply import PlyFormatError, parse_organized_cloud
 from cattle3d.modeling.weight_model import WeightModel
 from cattle3d.types import OrganizedCloud, View
@@ -102,6 +103,15 @@ class ScanOut(BaseModel):
     weighed_utc: str | None
 
 
+class ScanResultOut(ScanOut):
+    preview: dict[str, Any] | None = Field(
+        default=None,
+        description="only when requested with preview=true: depth thumbnails with the animal mask per view, "
+        "the top-view body points (base64 int16 mm, x along the body, y lateral, z height) and the trunk "
+        "cross-sections integrated into the volume; null for a refused scan",
+    )
+
+
 class WeighingIn(BaseModel):
     weight_kg: float = Field(gt=0, examples=[612.5])
 
@@ -133,6 +143,7 @@ def create_app(
     api_key: str | None = None,
     site_dir: Path | None = None,
     figures_dir: Path | None = None,
+    demo: "Demo | None" = None,
 ) -> FastAPI:
     """Build the app around a service. With ``api_key`` set, every /v1 route
     requires the ``X-API-Key`` header. ``site_dir`` is served at ``/`` (the
@@ -205,7 +216,8 @@ def create_app(
         right: Annotated[UploadFile, File(description="right-view PLY")],
         top: Annotated[UploadFile, File(description="top-view PLY")],
         scale_weight_kg: Annotated[float | None, Form(gt=0)] = None,
-    ) -> ScanOut:
+        preview: Annotated[bool, Form(description="also return what the cameras saw")] = False,
+    ) -> ScanResultOut:
         """Weigh one animal from its three clouds. Give ``scale_weight_kg`` when
         the animal was also put on the scale (reference or spot weighing)."""
         service.herd(herd_id)
@@ -213,8 +225,18 @@ def create_app(
                   View.RIGHT: await _read_cloud(right, View.RIGHT),
                   View.TOP: await _read_cloud(top, View.TOP)}
         # Segmentation is CPU-bound: keep it off the event loop.
+        if preview:
+            result, shown = await run_in_threadpool(
+                service.scan_with_preview, herd_id, animal_tag, clouds, scale_weight_kg
+            )
+            return ScanResultOut(**asdict(result), preview=shown)
         result = await run_in_threadpool(service.scan, herd_id, animal_tag, clouds, scale_weight_kg)
-        return _scan(result)
+        return ScanResultOut(**asdict(result))
+
+    @app.get("/v1/herds/{herd_id}/scans", tags=["scans"], dependencies=v1)
+    def herd_scans(herd_id: int, limit: int = 50) -> list[ScanOut]:
+        """The herd's most recent scans, newest first."""
+        return [_scan(s) for s in service.herd_scans(herd_id, max(1, min(limit, 500)))]
 
     @app.get("/v1/scans/{scan_id}", tags=["scans"], dependencies=v1)
     def get_scan(scan_id: int) -> ScanOut:
@@ -228,6 +250,27 @@ def create_app(
     @app.get("/v1/herds/{herd_id}/animals/{animal_tag}/scans", tags=["scans"], dependencies=v1)
     def animal_history(herd_id: int, animal_tag: str) -> list[ScanOut]:
         return [_scan(s) for s in service.animal_history(herd_id, animal_tag)]
+
+    if demo is not None:
+        @app.get("/v1/demo", tags=["demo"], dependencies=v1)
+        def demo_info() -> dict[str, object]:
+            """Demo herds, sample animals the model did not train on, and the
+            address a phone on the same network can open."""
+            return demo.info()
+
+        @app.get("/v1/demo/samples/{sample_id}/{view}.ply", tags=["demo"], dependencies=v1)
+        def demo_cloud(sample_id: str, view: View) -> FileResponse:
+            path = demo.cloud_path(sample_id, view)
+            if path is None:
+                raise HTTPException(404, f"no demo sample {sample_id!r}")
+            return FileResponse(path, media_type="application/octet-stream", filename=f"{sample_id}_{view.value}.ply")
+
+        @app.get("/v1/demo/qr.svg", tags=["demo"], dependencies=v1)
+        def demo_qr() -> Response:
+            svg = demo.qr_svg()
+            if svg is None:
+                raise HTTPException(404, "QR code needs the optional package qrcode")
+            return Response(svg, media_type="image/svg+xml")
 
     # Mounted last so the API routes above take precedence over "/".
     if figures_dir is not None and Path(figures_dir).is_dir():

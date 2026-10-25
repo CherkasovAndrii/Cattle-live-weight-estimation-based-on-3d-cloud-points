@@ -21,6 +21,7 @@ dependencies = [
 [project.optional-dependencies]
 figures = ["matplotlib>=3.8"]
 api = ["fastapi>=0.110", "uvicorn>=0.29", "python-multipart>=0.0.9"]
+demo = ["qrcode>=7.4"]
 dev = ["pytest>=8", "matplotlib>=3.8", "fastapi>=0.110", "python-multipart>=0.0.9", "httpx>=0.27"]
 
 [project.scripts]
@@ -35,4 +36,4 @@ pythonpath = ["src"]
 
 [tool.setuptools.package-data]
 "cattle3d.resources" = ["*.csv"]
-"cattle3d.web" = ["static/*", "static/img/*"]
+"cattle3d.web" = ["static/*", "static/img/*", "static/app/*"]

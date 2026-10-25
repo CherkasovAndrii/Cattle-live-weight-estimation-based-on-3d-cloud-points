@@ -2,8 +2,8 @@
 
 A REST service around the same library call the study uses
 (`features_from_clouds` → `WeightModel.predict`), so the API computes features
-exactly as training did. The website and the farm tablet are planned as
-clients of this API.
+exactly as training did. The presentation website and the farm web app at
+`/app/` are clients of this API.
 
 ```bash
 pip install -e ".[api]"
@@ -69,7 +69,8 @@ for later retraining.
 | POST / GET | `/v1/herds` | create / list herds |
 | GET | `/v1/herds/{id}` | calibration, reference count, scans by status, drift |
 | POST | `/v1/herds/{id}/calibration` | fit a new herd correction |
-| POST | `/v1/herds/{id}/scans` | weigh one animal from three clouds |
+| POST | `/v1/herds/{id}/scans` | weigh one animal from three clouds (`preview=true` adds what the cameras saw) |
+| GET | `/v1/herds/{id}/scans?limit=50` | the herd's recent scans, newest first |
 | GET | `/v1/scans/{id}` | one scan |
 | PUT | `/v1/scans/{id}/weighing` | attach a scale reading |
 | GET | `/v1/herds/{id}/animals/{tag}/scans` | an animal's weight history |
@@ -87,6 +88,18 @@ curl -H "X-API-Key: $KEY" -F animal_tag=UA-0042 \
  "lower_kg": 558.5, "upper_kg": 678.3, "raw_weight_kg": 612.3,
  "calibration_id": 1, "animal_tag": "UA-0042", "scale_weight_kg": null, ...}
 ```
+
+With the form field `preview=true` the response also carries `preview`
+(null for a refused scan): a depth thumbnail per view with the animal found in
+it, the top-view body points (base64 int16 millimetres, x along the body,
+y lateral, z height), the 64 trunk cross-sections that are integrated into the
+volume, the main body measures, and processing times. The farm web app draws
+its 3-D view from this; it adds about 160 KB.
+
+`cattle3d demo` adds three read-only routes for the defence demo:
+`GET /v1/demo` (demo farms and the held-out sample cows),
+`GET /v1/demo/samples/{id}/{left|right|top}.ply` (their clouds) and
+`GET /v1/demo/qr.svg` (the phone address as a QR code).
 
 Errors: 401 wrong key, 404 unknown herd or scan, 409 duplicate herd name,
 413 file over 16 MB, 422 invalid request (not a dense 512×424 PLY, a scale
