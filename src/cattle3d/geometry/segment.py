@@ -181,22 +181,28 @@ def _merge_fragments(
     return merged
 
 
-def body_frame(points: np.ndarray, floor: Plane) -> np.ndarray:
-    """Rotate floor-relative coordinates so axis 0 is the body's long axis."""
+def body_axes(points: np.ndarray, floor: Plane) -> tuple[np.ndarray, np.ndarray]:
+    """The rigid map camera -> body frame as ``(R, t)``: ``frame = p @ R.T + t``.
+    Rows of R are the body axis, the lateral axis and the floor normal."""
     up = floor.normal
-    height = floor.signed_distance(points)
-    on_floor = points - np.outer(height, up)
     # Any orthonormal basis of the floor plane, then PCA inside it.
     helper = np.array([1.0, 0.0, 0.0]) if abs(up[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
     e1 = np.cross(up, helper)
     e1 /= np.linalg.norm(e1)
     e2 = np.cross(up, e1)
-    planar = np.stack([on_floor @ e1, on_floor @ e2], axis=1)
-    planar -= planar.mean(axis=0)
-    _, vecs = np.linalg.eigh(np.cov(planar.T))
+    planar = np.stack([points @ e1, points @ e2], axis=1)  # e1, e2 are orthogonal to the normal
+    mean = planar.mean(axis=0)
+    _, vecs = np.linalg.eigh(np.cov((planar - mean).T))
     axis = vecs[:, -1]
     lateral = np.array([-axis[1], axis[0]])
-    return np.stack([planar @ axis, planar @ lateral, height], axis=1)
+    rot = np.stack([axis[0] * e1 + axis[1] * e2, lateral[0] * e1 + lateral[1] * e2, up])
+    return rot, np.array([-mean @ axis, -mean @ lateral, floor.d])
+
+
+def body_frame(points: np.ndarray, floor: Plane) -> np.ndarray:
+    """Rotate floor-relative coordinates so axis 0 is the body's long axis."""
+    rot, shift = body_axes(points, floor)
+    return points @ rot.T + shift
 
 
 @dataclass(frozen=True)

@@ -25,6 +25,7 @@ from cattle3d.modeling.calibration import (
 )
 from cattle3d.modeling.weight_model import WeightModel
 from cattle3d.pipeline import analyse_clouds, features_from_clouds
+from cattle3d.geometry.rig import Rig
 from cattle3d.preview import scan_preview
 from cattle3d.types import OrganizedCloud, View
 
@@ -75,6 +76,9 @@ class WeightService:
         self.model = model
         self.store = store
         self.extract = extract
+        # Station calibration per herd (camera extrinsics), used only to show
+        # the three views as one animal. Set at start-up; not stored yet.
+        self.station_rigs: dict[int, Rig] = {}
 
     # ---- herds -------------------------------------------------------------------
     def create_herd(self, name: str) -> Herd:
@@ -117,10 +121,13 @@ class WeightService:
         return self._scan(herd_id, animal_tag, lambda: self.extract(clouds), scale_weight_kg)
 
     def scan_with_preview(
-        self, herd_id: int, animal_tag: str, clouds: dict[View, OrganizedCloud], scale_weight_kg: float | None = None
+        self, herd_id: int, animal_tag: str, clouds: dict[View, OrganizedCloud], scale_weight_kg: float | None = None,
+        rig: Rig | None = None,
     ) -> tuple[Scan, dict[str, object] | None]:
         """``scan`` plus what the cameras saw (see ``cattle3d.preview``) and how
-        long each stage took. The preview is None when the scan was refused."""
+        long each stage took. The preview is None when the scan was refused.
+        ``rig`` is the calibration of the station that captured the clouds;
+        without it the herd's station calibration is used, if any."""
         timing: dict[str, float] = {}
         holder: dict[str, object] = {}
 
@@ -137,7 +144,7 @@ class WeightService:
         timing["total_ms"] = 1000 * (time.perf_counter() - t0)
         if "traces" not in holder or stored.status == "refused":
             return stored, None
-        preview = scan_preview(holder["traces"])  # type: ignore[arg-type]
+        preview = scan_preview(holder["traces"], clouds, rig or self.station_rigs.get(herd_id))  # type: ignore[arg-type]
         features = holder["features"]
         preview["measures"] = {k: round(float(features[f]), 3) for k, f in PREVIEW_MEASURES.items()}  # type: ignore[index]
         preview["timing_ms"] = {k: round(v) for k, v in timing.items()}

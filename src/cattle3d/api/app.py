@@ -10,6 +10,7 @@ mapping of service errors to status codes. No business logic lives here.
 # No `from __future__ import annotations`: FastAPI must evaluate the
 # annotations of routes defined inside create_app, which use its locals.
 import hmac
+import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -34,6 +35,7 @@ from cattle3d import __version__
 from cattle3d.api.service import InvalidRequestError, NotFoundError, WeightService
 from cattle3d.api.store import Calibration, DuplicateError, Scan, Store
 from cattle3d.demo import Demo
+from cattle3d.geometry.rig import Rig
 from cattle3d.io.ply import PlyFormatError, parse_organized_cloud
 from cattle3d.modeling.weight_model import WeightModel
 from cattle3d.types import OrganizedCloud, View
@@ -107,7 +109,8 @@ class ScanResultOut(ScanOut):
     preview: dict[str, Any] | None = Field(
         default=None,
         description="only when requested with preview=true: depth thumbnails with the animal mask per view, "
-        "the top-view body points (base64 int16 mm, x along the body, y lateral, z height) and the trunk "
+        "the body points (base64 int16 mm, x along the body, y lateral, z height; all three views when the "
+        "station calibration is known, else the top view) with the view of each point, and the trunk "
         "cross-sections integrated into the volume; null for a refused scan",
     )
 
@@ -135,6 +138,15 @@ async def _read_cloud(upload: UploadFile, view: View) -> OrganizedCloud:
         return parse_organized_cloud(raw, f"{view.value} cloud")
     except PlyFormatError as exc:
         raise HTTPException(422, str(exc)) from exc
+
+
+def _rig(text: str | None) -> Rig | None:
+    if not text:
+        return None
+    try:
+        return Rig.from_json(json.loads(text))
+    except (ValueError, KeyError, TypeError) as exc:  # JSONDecodeError is a ValueError
+        raise HTTPException(422, f"rig: {exc}") from exc
 
 
 # ---- app ------------------------------------------------------------------------------
@@ -217,17 +229,22 @@ def create_app(
         top: Annotated[UploadFile, File(description="top-view PLY")],
         scale_weight_kg: Annotated[float | None, Form(gt=0)] = None,
         preview: Annotated[bool, Form(description="also return what the cameras saw")] = False,
+        rig: Annotated[str | None, Form(
+            description='station calibration for the preview, JSON {"left": [[R row]×3, [t]], "right": ...} '
+            "mapping each side camera into the top camera frame (metres); default: the herd's"
+        )] = None,
     ) -> ScanResultOut:
         """Weigh one animal from its three clouds. Give ``scale_weight_kg`` when
         the animal was also put on the scale (reference or spot weighing)."""
         service.herd(herd_id)
+        station = _rig(rig)
         clouds = {View.LEFT: await _read_cloud(left, View.LEFT),
                   View.RIGHT: await _read_cloud(right, View.RIGHT),
                   View.TOP: await _read_cloud(top, View.TOP)}
         # Segmentation is CPU-bound: keep it off the event loop.
         if preview:
             result, shown = await run_in_threadpool(
-                service.scan_with_preview, herd_id, animal_tag, clouds, scale_weight_kg
+                service.scan_with_preview, herd_id, animal_tag, clouds, scale_weight_kg, station
             )
             return ScanResultOut(**asdict(result), preview=shown)
         result = await run_in_threadpool(service.scan, herd_id, animal_tag, clouds, scale_weight_kg)

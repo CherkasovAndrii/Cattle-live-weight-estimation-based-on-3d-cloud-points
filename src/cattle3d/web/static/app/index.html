@@ -114,14 +114,15 @@
 
       <div class="card" id="model3d" hidden>
         <div class="h-row">
-          <h2>Об’ємна модель тулуба</h2>
+          <h2>Тривимірна модель</h2>
           <div class="seg" role="group" aria-label="Шари">
             <button type="button" id="t-points" aria-pressed="true">Точки</button>
-            <button type="button" id="t-slices" aria-pressed="true">Зрізи</button>
+            <button type="button" id="t-cams" aria-pressed="false">Камери</button>
+            <button type="button" id="t-slices" aria-pressed="false">Зрізи</button>
           </div>
         </div>
-        <canvas id="view3d" aria-label="Тривимірна модель: точки верхнього ракурсу і поперечні зрізи тулуба"></canvas>
-        <p class="hint">Перетягніть, щоб обернути; коліщатко або два пальці для масштабу. Кільця показують 64 зрізи, площі яких складено в об’єм тулуба.</p>
+        <canvas id="view3d" aria-label="Тривимірна модель тварини з трьох хмар точок і поперечні зрізи тулуба"></canvas>
+        <p class="hint"><span id="view3d-note"></span> «Камери» фарбує точки за камерою (ліва синя, права зелена, верхня помаранчева). «Зрізи» показує 64 перерізи тулуба, площі яких складено в об’єм. Перетягніть, щоб обернути; коліщатко або два пальці для масштабу.</p>
       </div>
 
       <div class="card placeholder" id="placeholder">

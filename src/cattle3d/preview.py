@@ -1,7 +1,8 @@
 """A compact visual summary of one scan, for screens that show the operator
 what the cameras saw and where the volume came from.
 
-Owns: depth thumbnails with the animal mask, the top-view body points and the
+Owns: depth thumbnails with the animal mask, the body points (all three views
+merged when the station calibration is known, else the top view) and the
 trunk cross-sections that the volume feature integrates. Must not know about
 HTTP or storage. Everything is plain JSON (images as PNG data URLs, points as
 base64 int16 millimetres) so a browser can draw it without libraries.
@@ -17,10 +18,12 @@ import numpy as np
 from scipy.spatial import ConvexHull, QhullError
 
 from cattle3d.features.geometry_features import N_SLICES, trunk_interval
+from cattle3d.geometry.rig import Rig, merged_body_points
 from cattle3d.geometry.segment import SegmentationTrace
-from cattle3d.types import View
+from cattle3d.types import OrganizedCloud, View
 
-MAX_POINTS = 14_000
+MAX_POINTS = 24_000
+VIEW_ORDER = (View.LEFT, View.RIGHT, View.TOP)
 THUMB_STEP = 2  # 512×424 Kinect frame -> 256×212 thumbnail
 
 
@@ -62,14 +65,26 @@ def _hull(section: np.ndarray) -> list[list[float]]:
     return [[round(float(x), 3), round(float(z), 3)] for x, z in pts[hull.vertices]]
 
 
-def scan_preview(traces: dict[View, SegmentationTrace], seed: int = 0) -> dict[str, object]:
+def scan_preview(
+    traces: dict[View, SegmentationTrace],
+    clouds: dict[View, OrganizedCloud] | None = None,
+    rig: Rig | None = None,
+    seed: int = 0,
+) -> dict[str, object]:
+    """With the station calibration (``rig``) the three views are merged into
+    one animal; without it only the top view's points are shown."""
     top = traces[View.TOP].result.body_points
     lo, hi = trunk_interval(top)
     centre = 0.5 * (lo + hi)
-    pts = top.copy()
+    if rig is not None and clouds is not None:
+        pts, view_of = merged_body_points(clouds, traces, rig)
+    else:
+        pts, view_of = top, np.full(len(top), VIEW_ORDER.index(View.TOP), np.uint8)
+    pts = pts.copy()
     pts[:, 0] -= centre
     if len(pts) > MAX_POINTS:
-        pts = pts[np.random.default_rng(seed).choice(len(pts), MAX_POINTS, replace=False)]
+        keep = np.random.default_rng(seed).choice(len(pts), MAX_POINTS, replace=False)
+        pts, view_of = pts[keep], view_of[keep]
     mm = np.clip(np.round(pts * 1000), -32768, 32767).astype("<i2")
 
     trunk = top[(top[:, 0] >= lo) & (top[:, 0] <= hi)]
@@ -87,8 +102,11 @@ def scan_preview(traces: dict[View, SegmentationTrace], seed: int = 0) -> dict[s
         "views": {
             v.value: {"image": depth_thumbnail(t), "animal_points": int(t.animal.sum())} for v, t in traces.items()
         },
-        "top_points_mm": base64.b64encode(mm.tobytes()).decode(),
-        "n_top_points": int(len(mm)),
+        "points_mm": base64.b64encode(mm.tobytes()).decode(),
+        "point_view": base64.b64encode(view_of.astype(np.uint8).tobytes()).decode(),
+        "view_order": [v.value for v in VIEW_ORDER],
+        "n_points": int(len(mm)),
+        "views_merged": rig is not None and clouds is not None,
         "trunk_m": [round(float(lo - centre), 3), round(float(hi - centre), 3)],
         "slices": slices,
     }

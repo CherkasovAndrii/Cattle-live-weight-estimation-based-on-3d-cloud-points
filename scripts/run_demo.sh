@@ -1,6 +1,5 @@
 #!/usr/bin/env sh
-# Start the defence demo: the farm web app on this computer and on phones in
-# the same Wi-Fi network.
+# Start the defence demo: the farm web app on this computer and on phones.
 #   sh scripts/run_demo.sh /path/to/CowDatabase2 [/path/to/CowDatabase]
 set -e
 cd "$(dirname "$0")/.."
@@ -14,4 +13,6 @@ if [ ! -x .venv/bin/cattle3d ]; then
   .venv/bin/pip install -e ".[api,demo]"
 fi
 set -- --cowdb2 "$1" ${2:+--cowdb1 "$2"}
+# With cloudflared installed, phones on any network get an internet address.
+if command -v cloudflared >/dev/null 2>&1; then set -- "$@" --tunnel; fi
 exec .venv/bin/cattle3d demo "$@"

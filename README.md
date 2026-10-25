@@ -80,16 +80,32 @@ The script creates `.venv` and installs the package on the first run, then runs
 `cattle3d demo`. The first start also computes features for the herds (about
 a minute per herd) and trains the demo model (seconds); later starts take a few
 seconds. The browser opens at `http://localhost:8000/app/`, and the terminal
-prints the phone address with a QR code. On Windows allow Python through the
-firewall when asked, or phones cannot connect.
+prints the phone addresses with a QR code (the same QR code is on the **Ферма**
+tab).
+
+If the phone cannot open the page, the cause is the network, not the app:
+
+- **Firewall.** On Windows, `run_demo.bat` adds an inbound rule for port 8000
+  (Windows asks for administrator rights once). Without it phones time out.
+- **Wrong address.** A computer with WSL, Hyper-V, VirtualBox or a VPN has
+  several addresses; the terminal prints all of them, try each.
+- **Wi-Fi that isolates devices.** Guest and university networks often block
+  devices from reaching each other. Install
+  [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
+  (`winget install Cloudflare.cloudflared`): the scripts then add `--tunnel`,
+  which publishes the demo at a temporary `https://….trycloudflare.com`
+  address that a phone opens over any network, mobile data included, and the
+  QR code points there. The API key in the link still protects the data.
+  Without cloudflared, connect the laptop to the phone's own hotspot.
 
 What the app shows:
 
 - **Зважити**: pick three PLY files (left, right, top) or one of six demo cows,
   watch the upload and the processing stages, get the weight with its 90 %
   interval and trust status, the depth frames with the animal found in each,
-  and a 3-D view of the top-view points with the 64 trunk slices that make the
-  volume. With a scale weight the error is shown next to it.
+  and a rotatable 3-D view of the whole animal: the three clouds merged with the
+  station calibration (camera poses shipped with the datasets), coloured by
+  height or by camera, with the 64 trunk slices that make the volume. With a scale weight the error is shown next to it.
 - **Історія**: the farm's recent weighings.
 - **Ферма**: calibration, drift check, the model card and the QR code.
 
@@ -193,6 +209,7 @@ src/cattle3d/
   modeling/calibration.py  herd correction, its interval, drift check
   api/                     SQLite store, farm service, FastAPI app (docs/API.md)
   preview.py               what the cameras saw: depth thumbnails, body points, trunk slices
+  geometry/rig.py          station calibration and merging the three views for display
   demo.py                  defence demo: held-out cows, demo model, seeded demo farms
   web/static/              presentation website served at / (uk/en, live demo)
   web/static/app/          farm web app served at /app/ (uk, phone first)
