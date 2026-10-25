@@ -11,6 +11,7 @@ Owns: argument parsing, paths and printing. No business logic lives here.
     cattle3d figures     [--cowdb2 PATH --cowdb1 PATH]               -> reports/figures/thesis/{uk,en}/
     cattle3d serve       [--db data/farm.sqlite3 --port 8000]        -> REST API + website at / (needs the [api] extra)
     cattle3d demo        --cowdb2 PATH [--cowdb1 PATH]               -> farm app at /app/ for a computer and a phone
+    cattle3d sensor      --cowdb2 PATH --cowdb1 PATH                 -> reports/sensor_limits.md, figures (tolerated depth error)
 """
 
 from __future__ import annotations
@@ -249,6 +250,53 @@ def cmd_demo(args: argparse.Namespace) -> None:
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
+def cmd_sensor(args: argparse.Namespace) -> None:
+    from sklearn.dummy import DummyRegressor
+
+    from cattle3d.evaluation import sensor
+    from cattle3d.figures.draw import Lang
+    from cattle3d.figures.sensor import sensor_tolerance
+    from cattle3d.io.datasets import load_cowdatabase, load_cowdatabase2
+    from cattle3d.modeling.models import VOLUME_FEATURES, ensemble_model
+
+    herds = []
+    if args.cowdb2:
+        herds.append(load_cowdatabase2(Path(args.cowdb2)))
+    if args.cowdb1:
+        herds.append(load_cowdatabase(Path(args.cowdb1)))
+    if not herds:
+        sys.exit("give --cowdb2 and/or --cowdb1")
+    cache = Path(args.cache)
+    cache.mkdir(parents=True, exist_ok=True)
+    clean = sensor.Perturbation("noise", 0.0)
+    levels = [clean, *sensor.default_perturbations()]
+    results = []
+    for herd in herds:
+        tables = {}
+        for p in levels:
+            path = cache / sensor.cache_name(herd.herd, p)
+            if not path.is_file():  # each level re-segments every animal; cached because it is slow
+                sensor.extract_degraded(herd.animals, p, workers=args.workers).to_csv(path, index=False)
+                print(f"{herd.herd}: extracted {p.label}")
+            tables[p] = pd.read_csv(path, dtype={"animal_id": str}, keep_default_na=False, na_values=[""])
+        results += sensor.score_herd(
+            herd.herd, tables[clean], tables, VOLUME_FEATURES, lambda s: ensemble_model(VOLUME_FEATURES, s),
+            lambda s: DummyRegressor(), seeds=tuple(range(args.seeds)),
+        )
+    floor_path = cache / "floor_noise.csv"
+    if not floor_path.is_file():
+        pd.concat([sensor.floor_noise_frame(h.animals) for h in herds]).to_csv(floor_path, index=False)
+    floor = pd.read_csv(floor_path)
+    REPORTS.mkdir(exist_ok=True)
+    (REPORTS / "sensor_limits.md").write_text(sensor.sensor_markdown(results, floor))
+    frame = sensor.results_frame(results)
+    frame.to_csv(REPORTS / "sensor_limits.csv", index=False)
+    print(f"wrote {REPORTS / 'sensor_limits.md'}")
+    for code in args.lang:
+        path = sensor_tolerance(frame, floor, Path(args.figures) / code / "16_sensor_tolerance.png", Lang(code))
+        print(f"wrote {path}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cattle3d", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -314,6 +362,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--figures", default=str(REPORTS / "figures" / "thesis"), help="thesis figures shown on the website")
     p.add_argument("--no-site", action="store_true", help="serve the API only, without the website at /")
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("sensor", help="how much depth-sensor error the model tolerates")
+    p.add_argument("--cowdb2", help="path to a CowDatabase2 checkout (herd A)")
+    p.add_argument("--cowdb1", help="path to a CowDatabase checkout (herd B)")
+    p.add_argument("--cache", default="data/sensor", help="degraded feature tables, reused between runs")
+    p.add_argument("--figures", default="reports/figures/thesis")
+    p.add_argument("--lang", nargs="+", default=["uk", "en"], choices=["uk", "en"])
+    p.add_argument("--seeds", type=int, default=3)
+    p.add_argument("--workers", type=int, default=4)
+    p.set_defaults(func=cmd_sensor)
 
     p = sub.add_parser("demo", help="farm demo for a computer and a phone on the public herds")
     p.add_argument("--cowdb2", help="CowDatabase2 folder: Black Angus demo farm")
