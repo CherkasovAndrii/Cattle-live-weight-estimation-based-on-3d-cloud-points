@@ -3,7 +3,8 @@
 Non-contact estimation of a cow's live weight from three Kinect v2 depth views
 (left, right, top), with a prediction interval and a flag that says when the
 estimate should not be trusted. Research code for a master's thesis (KhNURE)
-and the core library behind the planned API, website and farm tablet app.
+and the core library behind the REST API, the presentation website and the
+farm web app.
 
 ## What it does
 
@@ -15,7 +16,7 @@ and the core library behind the planned API, website and farm tablet app.
 ```
 
 A figure-by-figure explanation of the method and of how it plugs into the
-planned API, website and tablet app is in [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md).
+API, the website and the farm web app is in [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md).
 
 ## Results on public data (`reports/results.md`)
 
@@ -63,6 +64,44 @@ anywhere outside this repository:
 git clone --depth 1 https://github.com/ruchaya/CowDatabase2
 git clone --depth 1 https://github.com/ruchaya/CowDatabase
 ```
+
+## Demo for the defence
+
+One command starts the farm web app on this computer and on phones in the same
+Wi-Fi network. It needs only the CowDatabase2 folder (CowDatabase adds a second
+demo farm):
+
+```bash
+sh scripts/run_demo.sh ../CowDatabase2 ../CowDatabase        # Linux / macOS
+scripts\run_demo.bat C:\data\CowDatabase2 C:\data\CowDatabase   # Windows
+```
+
+The script creates `.venv` and installs the package on the first run, then runs
+`cattle3d demo`. The first start also computes features for the herds (about
+a minute per herd) and trains the demo model (seconds); later starts take a few
+seconds. The browser opens at `http://localhost:8000/app/`, and the terminal
+prints the phone address with a QR code. On Windows allow Python through the
+firewall when asked, or phones cannot connect.
+
+What the app shows:
+
+- **Зважити**: pick three PLY files (left, right, top) or one of six demo cows,
+  watch the upload and the processing stages, get the weight with its 90 %
+  interval and trust status, the depth frames with the animal found in each,
+  and a 3-D view of the top-view points with the 64 trunk slices that make the
+  volume. With a scale weight the error is shown next to it.
+- **Історія**: the farm's recent weighings.
+- **Ферма**: calibration, drift check, the model card and the QR code.
+
+Honesty rule: the six demo cows and the 20 reference cows of each demo farm are
+left out of the demo model, and each demo farm is calibrated on those 20
+reference cows only, as a new farm would be. A demo weighing is therefore an
+out-of-sample prediction. On the 12 demo cows the mean absolute error is
+12.6 kg; that number is for illustration, the study figures are above.
+
+The same server is what a farm would reach in the cloud. The `Dockerfile`
+packages it; `--public-url https://your.server` makes the QR code point at the
+public address instead of the local network.
 
 ## Use it
 
@@ -153,10 +192,15 @@ src/cattle3d/
   modeling/weight_model.py deployable artifact: interval, range check, herd calibration
   modeling/calibration.py  herd correction, its interval, drift check
   api/                     SQLite store, farm service, FastAPI app (docs/API.md)
+  preview.py               what the cameras saw: depth thumbnails, body points, trunk slices
+  demo.py                  defence demo: held-out cows, demo model, seeded demo farms
   web/static/              presentation website served at / (uk/en, live demo)
+  web/static/app/          farm web app served at /app/ (uk, phone first)
   evaluation/              metrics and bootstrap, CV and transfer, study, report
   figures/                 thesis schemes and figures (uk/en) drawn from the code itself
   cli.py                   thin command-line adapter
+scripts/run_demo.*         one-command demo start (Windows .bat, POSIX .sh)
+Dockerfile                 the farm service as a container
 tests/                     synthetic-cloud unit tests, no dataset needed
 reports/                   generated results and figures, never edited by hand
 docs/                      how the method works, thesis captions

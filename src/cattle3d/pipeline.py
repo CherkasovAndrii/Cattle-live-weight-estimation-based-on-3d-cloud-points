@@ -14,7 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from cattle3d.features.geometry_features import animal_features, view_features
-from cattle3d.geometry.segment import SegmentationConfig, segment_view
+from cattle3d.geometry.segment import SegmentationConfig, SegmentationTrace, segment_view, trace_view
 from cattle3d.io.datasets import AnimalRecord
 from cattle3d.io.ply import read_organized_cloud
 from cattle3d.types import ALL_VIEWS, OrganizedCloud, View
@@ -28,6 +28,19 @@ def features_from_clouds(
         raise ValueError(f"all three views are required; missing {missing}")
     per_view = {view: view_features(segment_view(clouds[view], view, config)) for view in ALL_VIEWS}
     return animal_features(per_view)
+
+
+def analyse_clouds(
+    clouds: dict[View, OrganizedCloud], config: SegmentationConfig = SegmentationConfig()
+) -> tuple[dict[str, float], dict[View, SegmentationTrace]]:
+    """``features_from_clouds`` that also keeps every view's segmentation masks,
+    for interfaces that show the operator what the cameras saw. Same features."""
+    missing = [v.value for v in ALL_VIEWS if v not in clouds]
+    if missing:
+        raise ValueError(f"all three views are required; missing {missing}")
+    traces = {view: trace_view(clouds[view], view, config) for view in ALL_VIEWS}
+    features = animal_features({view: view_features(t.result) for view, t in traces.items()})
+    return features, traces
 
 
 def features_from_files(paths: dict[View, Path]) -> dict[str, float]:

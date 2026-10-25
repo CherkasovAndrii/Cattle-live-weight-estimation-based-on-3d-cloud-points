@@ -7,6 +7,7 @@ Must not know about HTTP; the API, a website or a tablet backend call this.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -23,7 +24,8 @@ from cattle3d.modeling.calibration import (
     fit_correction,
 )
 from cattle3d.modeling.weight_model import WeightModel
-from cattle3d.pipeline import features_from_clouds
+from cattle3d.pipeline import analyse_clouds, features_from_clouds
+from cattle3d.preview import scan_preview
 from cattle3d.types import OrganizedCloud, View
 
 Extractor = Callable[[dict[View, OrganizedCloud]], dict[str, float]]
@@ -32,6 +34,11 @@ UNCALIBRATED = (
     f"herd not calibrated: expect a systematic shift; weigh {RECOMMENDED_CALIBRATION_ANIMALS} "
     "animals and calibrate"
 )
+# Body measures shown next to a weighing, from the same features the model used.
+PREVIEW_MEASURES = {
+    "trunk_volume_m3": "top_trunk_cs_volume", "trunk_length_m": "top_trunk_length",
+    "trunk_width_m": "top_trunk_width", "height_m": "top_height",
+}
 MIN_WEIGHT_KG, MAX_WEIGHT_KG = 20.0, 2_000.0  # plausibility of a scale reading
 
 
@@ -107,6 +114,45 @@ class WeightService:
         A view without a usable animal is a refusal ("rescan"), not an error:
         it is stored so the refusal rate of a station can be monitored.
         """
+        return self._scan(herd_id, animal_tag, lambda: self.extract(clouds), scale_weight_kg)
+
+    def scan_with_preview(
+        self, herd_id: int, animal_tag: str, clouds: dict[View, OrganizedCloud], scale_weight_kg: float | None = None
+    ) -> tuple[Scan, dict[str, object] | None]:
+        """``scan`` plus what the cameras saw (see ``cattle3d.preview``) and how
+        long each stage took. The preview is None when the scan was refused."""
+        timing: dict[str, float] = {}
+        holder: dict[str, object] = {}
+
+        def compute() -> dict[str, float]:
+            t0 = time.perf_counter()
+            features, traces = analyse_clouds(clouds)
+            timing["segmentation_and_features_ms"] = 1000 * (time.perf_counter() - t0)
+            holder["traces"] = traces
+            holder["features"] = features
+            return features
+
+        t0 = time.perf_counter()
+        stored = self._scan(herd_id, animal_tag, compute, scale_weight_kg)
+        timing["total_ms"] = 1000 * (time.perf_counter() - t0)
+        if "traces" not in holder or stored.status == "refused":
+            return stored, None
+        preview = scan_preview(holder["traces"])  # type: ignore[arg-type]
+        features = holder["features"]
+        preview["measures"] = {k: round(float(features[f]), 3) for k, f in PREVIEW_MEASURES.items()}  # type: ignore[index]
+        preview["timing_ms"] = {k: round(v) for k, v in timing.items()}
+        return stored, preview
+
+    def scan_from_features(
+        self, herd_id: int, animal_tag: str, features: dict[str, float], scale_weight_kg: float | None = None
+    ) -> Scan:
+        """Store a scan whose features were computed elsewhere (e.g. imported
+        from an earlier extraction), with the same decision rules."""
+        return self._scan(herd_id, animal_tag, lambda: dict(features), scale_weight_kg)
+
+    def _scan(
+        self, herd_id: int, animal_tag: str, compute: Callable[[], dict[str, float]], scale_weight_kg: float | None
+    ) -> Scan:
         self.herd(herd_id)
         animal_tag = animal_tag.strip()
         if not animal_tag:
@@ -116,7 +162,7 @@ class WeightService:
         calibration = self.store.current_calibration(herd_id)
         version = self.model.package_version
         try:
-            features = self.extract(clouds)
+            features = compute()
         except (SegmentationError, ValueError) as exc:
             stored = self.store.add_scan(
                 NewScan(herd_id, animal_tag, "refused", [f"rescan: {exc}"], None, None, None, None,
@@ -153,6 +199,10 @@ class WeightService:
         updated = self.store.set_scale_weight(scan_id, _check_weight(weight_kg))
         assert updated is not None
         return updated
+
+    def herd_scans(self, herd_id: int, limit: int = 50) -> list[Scan]:
+        self.herd(herd_id)
+        return self.store.herd_scans(herd_id, limit)
 
     def animal_history(self, herd_id: int, animal_tag: str) -> list[Scan]:
         self.herd(herd_id)

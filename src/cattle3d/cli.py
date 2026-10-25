@@ -10,6 +10,7 @@ Owns: argument parsing, paths and printing. No business logic lives here.
     cattle3d predict     --left L.ply --right R.ply --top T.ply [--herd NAME]  -> JSON
     cattle3d figures     [--cowdb2 PATH --cowdb1 PATH]               -> reports/figures/thesis/{uk,en}/
     cattle3d serve       [--db data/farm.sqlite3 --port 8000]        -> REST API + website at / (needs the [api] extra)
+    cattle3d demo        --cowdb2 PATH [--cowdb1 PATH]               -> farm app at /app/ for a computer and a phone
 """
 
 from __future__ import annotations
@@ -191,6 +192,49 @@ def cmd_serve(args: argparse.Namespace) -> None:
     uvicorn.run(app, host=args.host, port=args.port)
 
 
+def cmd_demo(args: argparse.Namespace) -> None:
+    try:
+        import uvicorn
+
+        from cattle3d.api.app import create_app
+        from cattle3d.demo import lan_address, prepare
+        from cattle3d.web import SITE_DIR
+    except ImportError:
+        sys.exit('the demo needs the API extra: pip install -e ".[api,demo]"')
+    import secrets
+    import webbrowser
+
+    key = os.environ.get("CATTLE3D_API_KEY") or secrets.token_urlsafe(9)
+    local_url = f"http://localhost:{args.port}/app/#key={key}"
+    if args.public_url:  # a cloud deployment: phones open the server's public address
+        phone_url = f"{args.public_url.rstrip('/')}/app/#key={key}"
+    elif args.host in ("127.0.0.1", "localhost"):
+        phone_url = None
+    else:
+        phone_url = f"http://{lan_address()}:{args.port}/app/#key={key}"
+    service, demo = prepare(
+        Path(args.features), Path(args.model), Path(args.db),
+        Path(args.cowdb2) if args.cowdb2 else None, Path(args.cowdb1) if args.cowdb1 else None, phone_url,
+    )
+    app = create_app(service, key, SITE_DIR, Path(args.figures), demo=demo)
+    print(f"\n  demo animals: {len(demo.samples)} (not seen by the demo model)")
+    print(f"  computer: {local_url}")
+    if phone_url:
+        print(f"  phone: {phone_url}" if args.public_url else f"  phone (same Wi-Fi): {phone_url}")
+        try:
+            import qrcode
+
+            qr = qrcode.QRCode(border=1)
+            qr.add_data(phone_url)
+            qr.print_ascii(invert=True)
+        except Exception:  # optional: no package or a console without block characters
+            pass
+    print("  stop: Ctrl+C\n", flush=True)
+    if not args.no_browser:
+        webbrowser.open(local_url)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cattle3d", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -256,6 +300,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--figures", default=str(REPORTS / "figures" / "thesis"), help="thesis figures shown on the website")
     p.add_argument("--no-site", action="store_true", help="serve the API only, without the website at /")
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("demo", help="farm demo for a computer and a phone on the public herds")
+    p.add_argument("--cowdb2", help="CowDatabase2 folder: Black Angus demo farm")
+    p.add_argument("--cowdb1", help="CowDatabase folder: Hereford demo farm")
+    p.add_argument("--features", default=str(DEFAULT_FEATURES))
+    p.add_argument("--model", default="artifacts/demo_model.joblib", help="cached demo model (retrained when missing)")
+    p.add_argument("--db", default="data/demo.sqlite3")
+    p.add_argument("--host", default="0.0.0.0", help="0.0.0.0 lets a phone on the same network connect")
+    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--figures", default=str(REPORTS / "figures" / "thesis"))
+    p.add_argument("--public-url", help="address phones should open, e.g. https://cattle.example.org (cloud deployment)")
+    p.add_argument("--no-browser", action="store_true")
+    p.set_defaults(func=cmd_demo)
     return parser
 
 

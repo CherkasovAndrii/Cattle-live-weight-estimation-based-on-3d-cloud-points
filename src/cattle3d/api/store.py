@@ -217,6 +217,14 @@ class Store:
             ).fetchall()
         return [_scan(r) for r in rows]
 
+    def herd_scans(self, herd_id: int, limit: int = 50) -> list[Scan]:
+        """The herd's most recent scans, newest first."""
+        with self._connect() as db:
+            rows = db.execute(
+                f"SELECT {_SCAN_COLUMNS} FROM scans WHERE herd_id = ? ORDER BY id DESC LIMIT ?", (herd_id, limit)
+            ).fetchall()
+        return [_scan(r) for r in rows]
+
     def reference_weighings(self, herd_id: int) -> list[Scan]:
         """The latest weighed, usable scan of each animal in the herd."""
         with self._connect() as db:
