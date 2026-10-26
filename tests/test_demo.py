@@ -249,6 +249,28 @@ def test_views_of_different_animals_are_flagged(model, tmp_path, plys, monkeypat
     assert r.json()["weight_kg"] is not None
 
 
+def test_recording_quality_is_reported_and_checked(model, tmp_path, plys, monkeypatch):  # noqa: F811
+    from cattle3d.geometry.quality import ViewQuality
+    from cattle3d.pipeline import features_from_clouds
+
+    service = WeightService(model, Store(tmp_path / "farm.sqlite3"), extract=features_from_clouds)
+    c = TestClient(create_app(service, api_key=KEY))
+    herd = _herd(c)
+    r = c.post(f"/v1/herds/{herd}/scans", data={"animal_tag": "UA-1", "preview": "true"}, files=_files(plys), headers=AUTH)
+    quality = r.json()["preview"]["recording_quality"]
+    assert set(quality) == {"left", "right", "top"}
+    assert not any("depth noise" in x or "missing pixels" in x for x in r.json()["reasons"])
+
+    worse = {View.LEFT: ViewQuality(View.LEFT, 0.012, 0.3), View.TOP: ViewQuality(View.TOP, 0.001, 1.2)}
+    monkeypatch.setattr("cattle3d.api.service.view_quality",
+                        lambda cloud, view, floor: worse.get(view, ViewQuality(view, 0.002, 0.2)))
+    r = c.post(f"/v1/herds/{herd}/scans", data={"animal_tag": "UA-2"}, files=_files(plys), headers=AUTH)
+    reasons = r.json()["reasons"]
+    assert r.json()["status"] == "flagged" and r.json()["weight_kg"] is not None
+    assert any(x.startswith("depth noise in left view 1.2 %") for x in reasons)
+    assert any(x.startswith("many scattered missing pixels in top view") for x in reasons)
+
+
 def test_contradictory_views_are_refused(model, tmp_path, plys, monkeypatch):  # noqa: F811
     from cattle3d.api.service import CONTRADICTORY_VIEWS
 

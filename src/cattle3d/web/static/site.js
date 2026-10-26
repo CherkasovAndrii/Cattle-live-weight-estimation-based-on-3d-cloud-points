@@ -30,6 +30,8 @@
     [/^too few points in left view$/, "замало точок у лівому ракурсі"],
     [/^too few points in right view$/, "замало точок у правому ракурсі"],
     [/^too few points in top view$/, "замало точок у верхньому ракурсі"],
+    [/^depth noise in (left|right|top) view ([\d.]+) % of range.*$/, "шум глибини в кадрі ($1) $2 % відстані, більше за допустимі 0,75 %"],
+    [/^many scattered missing pixels in (left|right|top) view.*$/, "багато розсіяних пікселів без глибини в кадрі ($1)"],
     [/^rescan: (.*)$/, "пересканувати: $1"],
   ];
   const reasonText = (r) => {

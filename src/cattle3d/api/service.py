@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from cattle3d.api.store import Calibration, Herd, NewScan, Scan, Store
+from cattle3d.geometry.quality import quality_reasons, view_quality
 from cattle3d.geometry.segment import SegmentationError
 from cattle3d.modeling.calibration import (
     RECOMMENDED_CALIBRATION_ANIMALS,
@@ -145,6 +146,11 @@ class WeightService:
         preview = scan_preview(holder["traces"], holder.get("merged"))  # type: ignore[arg-type]
         features = holder["features"]
         preview["measures"] = {k: round(float(features[f]), 3) for k, f in PREVIEW_MEASURES.items()}  # type: ignore[index]
+        preview["recording_quality"] = {  # see cattle3d.geometry.quality
+            q.view.value: {"floor_noise_rel": None if q.floor_noise_rel is None else round(q.floor_noise_rel, 5),
+                           "edge_density": round(q.edge_density, 3)}
+            for q in holder["quality"]  # type: ignore[attr-defined]
+        }
         preview["timing_ms"] = {"segmentation_and_features_ms": round(holder["analyse_ms"]),  # type: ignore[arg-type]
                                 "total_ms": round(total_ms)}
         return stored, preview
@@ -163,6 +169,7 @@ class WeightService:
             features, traces = analyse_clouds(clouds)
             holder["analyse_ms"] = 1000 * (time.perf_counter() - t0)
             holder["traces"], holder["features"] = traces, features
+            holder["quality"] = [view_quality(clouds[v], v, t.result.floor) for v, t in traces.items()]
             if station is not None:
                 merged = merge_views(clouds, traces, station)
                 holder["merged"] = merged
@@ -170,11 +177,15 @@ class WeightService:
                     raise ValueError(CONTRADICTORY_VIEWS)
             return features
 
-        def mismatch() -> list[str]:
+        def recording_checks() -> list[str]:
+            # Is the camera as good as the training cameras, and is it one animal?
+            reasons = quality_reasons(holder.get("quality", []))  # type: ignore[arg-type]
             merged = holder.get("merged")
-            return [MIXED_VIEWS] if isinstance(merged, MergedViews) and not merged.same_animal else []
+            if isinstance(merged, MergedViews) and not merged.same_animal:
+                reasons.append(MIXED_VIEWS)
+            return reasons
 
-        return self._scan(herd_id, animal_tag, compute, scale_weight_kg, mismatch)
+        return self._scan(herd_id, animal_tag, compute, scale_weight_kg, recording_checks)
 
     def scan_from_features(
         self, herd_id: int, animal_tag: str, features: dict[str, float], scale_weight_kg: float | None = None
