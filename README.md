@@ -3,8 +3,7 @@
 Non-contact estimation of a cow's live weight from three Kinect v2 depth views
 (left, right, top), with a prediction interval and a flag that says when the
 estimate should not be trusted. Research code for a master's thesis (KhNURE)
-and the core library behind the REST API, the presentation website and the
-farm web app.
+and the core library behind the REST API and the React web console.
 
 ## What it does
 
@@ -16,7 +15,7 @@ farm web app.
 ```
 
 A figure-by-figure explanation of the method and of how it plugs into the
-API, the website and the farm web app is in [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md).
+API and the web console is in [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md).
 
 ## Results on public data (`reports/results.md`)
 
@@ -67,7 +66,7 @@ git clone --depth 1 https://github.com/ruchaya/CowDatabase
 
 ## Demo for the defence
 
-One command starts the farm web app on this computer and on phones in the same
+One command starts the web console on this computer and on phones in the same
 Wi-Fi network. It needs only the CowDatabase2 folder (CowDatabase adds a second
 demo farm):
 
@@ -79,9 +78,9 @@ scripts\run_demo.bat C:\data\CowDatabase2 C:\data\CowDatabase   # Windows
 The script creates `.venv` and installs the package on the first run, then runs
 `cattle3d demo`. The first start also computes features for the herds (about
 a minute per herd) and trains the demo model (seconds); later starts take a few
-seconds. The browser opens at `http://localhost:8000/app/`, and the terminal
+seconds. The browser opens at `http://localhost:8000/weigh`, and the terminal
 prints the phone addresses with a QR code (the same QR code is on the **Ферма**
-tab).
+page).
 
 If the phone cannot open the page, the cause is the network, not the app:
 
@@ -98,8 +97,10 @@ If the phone cannot open the page, the cause is the network, not the app:
   QR code points there. The API key in the link still protects the data.
   Without cloudflared, connect the laptop to the phone's own hotspot.
 
-What the app shows:
+What the console shows (Ukrainian, phone and computer):
 
+- **Огляд**: the farm at a glance: animals, scans of the last 14 days by
+  status, calibration, drift, estimate against scale weight, recent weighings.
 - **Зважити**: pick three PLY files (left, right, top) or one of six demo cows,
   watch the upload and the processing stages, get the weight with its 90 %
   interval and trust status, the depth frames with the animal found in each,
@@ -109,8 +110,12 @@ What the app shows:
   If the three clouds do not line up as one animal (files from different cows
   or in the wrong slots), the weight is flagged or refused; see the same-animal
   check in [`docs/API.md`](docs/API.md).
-- **Історія**: the farm's recent weighings.
-- **Ферма**: calibration, drift check, the model card and the QR code.
+- **Ферма**: herd calibration from reference weighings, drift control, every
+  scan with scale readings added afterwards, new farms, the phone QR code.
+- **Тварини**: animals of the farm with last weight and daily gain; one
+  animal's weight history with its intervals and scale weights.
+- **Модель**: the model card, when an estimate is not trusted, study figures.
+- **Про систему**: how the station, service, library and console fit together.
 
 Honesty rule: the six demo cows and the 20 reference cows of each demo farm are
 left out of the demo model, and each demo farm is calibrated on those 20
@@ -171,22 +176,29 @@ cattle3d predict --herd my-farm --left L.ply --right R.ply --top T.ply
 
 With fewer than 10 animals only the intercept is corrected.
 
-### REST API
+### REST API and web console
 
 ```bash
 pip install -e ".[api]"
-cattle3d serve            # http://127.0.0.1:8000/docs
+cattle3d serve            # console at http://127.0.0.1:8000/, API docs at /docs
 ```
 
 Herds, scans, scale weighings, per-herd calibration and drift checks over
 HTTP, stored in SQLite. See [`docs/API.md`](docs/API.md).
 
-The same server shows the presentation website at `/`, in Ukrainian and
-English: the method, results, limits, the farm workflow, and a live demo that
-weighs uploaded PLY files through the API. Its hero is the real merged point cloud of
-one CowDatabase2 cow (`img/cow70_points.bin`) drawn with WebGL over a moving
-starfield; with reduced motion the sky and the cow stay still. Thesis figures come from
-`reports/figures/thesis/` (`--figures` to change; `--no-site` for the API only).
+The same server serves the web console at `/`: a React + TypeScript
+single-page app (source in `web/`) that uses only the public API. Its build
+is committed to `src/cattle3d/web/static/`, so a farm computer needs no Node.
+Thesis figures on the **Модель** page come from `reports/figures/thesis/`
+(`--figures` to change; `--no-site` for the API only). To change the console:
+
+```bash
+cd web
+npm ci
+npm run dev       # http://localhost:5173, API proxied to a server on port 8000
+npm test          # unit tests (vitest)
+npm run build     # type check, then build into src/cattle3d/web/static/
+```
 
 ### From Python
 
@@ -221,11 +233,11 @@ src/cattle3d/
   geometry/rig.py          station calibration and merging the three views for display
   geometry/quality.py      per-scan recording check: floor noise and scattered missing pixels
   demo.py                  defence demo: held-out cows, demo model, seeded demo farms
-  web/static/              presentation website served at / (uk/en, live demo)
-  web/static/app/          farm web app served at /app/ (uk, phone first)
+  web/static/              built web console served at / (do not edit; built from web/)
   evaluation/              metrics and bootstrap, CV and transfer, study, report, sensor-error study
   figures/                 thesis schemes and figures (uk/en) drawn from the code itself
   cli.py                   thin command-line adapter
+web/                       React + TypeScript web console (Vite): pages, API client, charts, 3-D view
 scripts/run_demo.*         one-command demo start (Windows .bat, POSIX .sh)
 Dockerfile                 the farm service as a container
 tests/                     synthetic-cloud unit tests, no dataset needed

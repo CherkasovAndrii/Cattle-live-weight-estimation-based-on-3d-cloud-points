@@ -108,7 +108,7 @@ def demo_client(model, tmp_path, table):  # noqa: F811
     service = WeightService(model, Store(tmp_path / "farm.sqlite3"), RowsByTag(table))
     herd = service.create_herd("Демо-ферма «Абердин-ангуси»").id
     demo = Demo([Sample("cowdb2-7", herd, "cowdb2", "7", 640.0, paths)], {"cowdb2": herd},
-                "http://192.168.1.5:8000/app/#key=k")
+                "http://192.168.1.5:8000/weigh#key=k")
     return TestClient(create_app(service, api_key=KEY, site_dir=SITE_DIR, demo=demo))
 
 
@@ -129,10 +129,10 @@ def test_demo_qr_code_points_phones_at_the_app(demo_client):
     assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml") and "<svg" in r.text
 
 
-def test_farm_app_is_served_and_demo_routes_need_a_demo(demo_client, model, tmp_path, table):  # noqa: F811
-    page = demo_client.get("/app/")
-    assert page.status_code == 200 and 'lang="uk"' in page.text and "viewport" in page.text
-    assert demo_client.get("/app/app.js").status_code == 200
+def test_console_opens_from_the_phone_link_and_demo_routes_need_a_demo(demo_client, model, tmp_path, table):  # noqa: F811
+    for path in ("/weigh", "/app/"):  # old printed links still reach the console
+        page = demo_client.get(path)
+        assert page.status_code == 200 and 'lang="uk"' in page.text and "viewport" in page.text
     plain = TestClient(create_app(WeightService(model, Store(tmp_path / "f2.sqlite3"), RowsByTag(table)), api_key=KEY))
     assert plain.get("/v1/demo", headers=AUTH).status_code == 404
 

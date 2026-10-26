@@ -9,8 +9,8 @@ Owns: argument parsing, paths and printing. No business logic lives here.
     cattle3d calibrate   --herd NAME --reference ref.csv       -> stores a herd correction in the model
     cattle3d predict     --left L.ply --right R.ply --top T.ply [--herd NAME]  -> JSON
     cattle3d figures     [--cowdb2 PATH --cowdb1 PATH]               -> reports/figures/thesis/{uk,en}/
-    cattle3d serve       [--db data/farm.sqlite3 --port 8000]        -> REST API + website at / (needs the [api] extra)
-    cattle3d demo        --cowdb2 PATH [--cowdb1 PATH]               -> farm app at /app/ for a computer and a phone
+    cattle3d serve       [--db data/farm.sqlite3 --port 8000]        -> REST API + web console at / (needs the [api] extra)
+    cattle3d demo        --cowdb2 PATH [--cowdb1 PATH]               -> web console for a computer and a phone
     cattle3d sensor      --cowdb2 PATH --cowdb1 PATH                 -> reports/sensor_limits.md, figures (tolerated depth error)
 """
 
@@ -206,7 +206,7 @@ def cmd_demo(args: argparse.Namespace) -> None:
     import webbrowser
 
     key = os.environ.get("CATTLE3D_API_KEY") or secrets.token_urlsafe(9)
-    local_url = f"http://localhost:{args.port}/app/#key={key}"
+    local_url = f"http://localhost:{args.port}/weigh#key={key}"
     phone_urls: list[tuple[str, str]] = []  # (how a phone reaches it, url)
     if args.public_url:  # a cloud deployment: phones open the server's public address
         phone_urls.append(("internet", args.public_url.rstrip("/")))
@@ -219,7 +219,7 @@ def cmd_demo(args: argparse.Namespace) -> None:
             phone_urls.append(("internet, any network", tunnel[0]))
     if args.host not in ("127.0.0.1", "localhost"):
         phone_urls += [("same Wi-Fi", f"http://{a}:{args.port}") for a in lan_addresses()]
-    phone_urls = [(how, f"{base}/app/#key={key}") for how, base in phone_urls]
+    phone_urls = [(how, f"{base}/weigh#key={key}") for how, base in phone_urls]
     phone_url = phone_urls[0][1] if phone_urls else None
     service, demo = prepare(
         Path(args.features), Path(args.model), Path(args.db),
@@ -363,8 +363,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--db", default="data/farm.sqlite3", help="SQLite file for herds, scans and calibrations")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)
-    p.add_argument("--figures", default=str(REPORTS / "figures" / "thesis"), help="thesis figures shown on the website")
-    p.add_argument("--no-site", action="store_true", help="serve the API only, without the website at /")
+    p.add_argument("--figures", default=str(REPORTS / "figures" / "thesis"), help="thesis figures shown in the web console")
+    p.add_argument("--no-site", action="store_true", help="serve the API only, without the web console at /")
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("sensor", help="how much depth-sensor error the model tolerates")

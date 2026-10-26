@@ -30,6 +30,7 @@ from fastapi.security import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from cattle3d import __version__
 from cattle3d.api.service import InvalidRequestError, NotFoundError, WeightService
@@ -154,6 +155,21 @@ def _rig(text: str | None) -> Rig | None:
         raise HTTPException(422, f"rig: {exc}") from exc
 
 
+class ConsoleFiles(StaticFiles):
+    """The web console is a single-page app: a page address such as ``/herd``
+    or ``/animals/UA-0427`` has no file behind it, so it gets ``index.html``
+    and the browser router draws the page. Missing assets and API paths stay 404."""
+
+    async def get_response(self, path: str, scope: Any) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            last = path.rsplit("/", 1)[-1]
+            if exc.status_code != 404 or "." in last or path.split("/", 1)[0] in ("v1", "figures"):
+                raise
+            return await super().get_response("index.html", scope)
+
+
 # ---- app ------------------------------------------------------------------------------
 def create_app(
     service: WeightService,
@@ -164,7 +180,7 @@ def create_app(
 ) -> FastAPI:
     """Build the app around a service. With ``api_key`` set, every /v1 route
     requires the ``X-API-Key`` header. ``site_dir`` is served at ``/`` (the
-    presentation website) and ``figures_dir`` at ``/figures`` (thesis figures,
+    React web console, built from ``web/``) and ``figures_dir`` at ``/figures`` (thesis figures,
     ``{uk,en}/NN_name.png``); both are optional and public."""
     app = FastAPI(
         title="cattle3d weight API",
@@ -298,7 +314,7 @@ def create_app(
     if figures_dir is not None and Path(figures_dir).is_dir():
         app.mount("/figures", StaticFiles(directory=figures_dir), name="figures")
     if site_dir is not None:
-        app.mount("/", StaticFiles(directory=site_dir, html=True), name="site")
+        app.mount("/", ConsoleFiles(directory=site_dir, html=True), name="site")
     return app
 
 
