@@ -92,8 +92,8 @@ export class Api {
   async demoCloud(sampleId: string, view: View): Promise<Blob> {
     return (await this.request(`/v1/demo/samples/${encodeURIComponent(sampleId)}/${view}.ply`)).blob();
   }
-  async demoQr(): Promise<string | null> {
-    try { return await (await this.request("/v1/demo/qr.svg")).text(); } catch { return null; }
+  async demoQr(i = 0): Promise<string | null> {
+    try { return await (await this.request(`/v1/demo/qr.svg?i=${i}`)).text(); } catch { return null; }
   }
 
   /** Upload three clouds with progress (fetch has no upload progress, XHR does). */

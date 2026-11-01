@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { api } from "../api/client";
 import { useApp } from "../lib/state";
+import { PhoneButton } from "./PhoneLinks";
 import { StarField } from "./StarField";
 
 const NAV = [
@@ -12,7 +13,7 @@ const NAV = [
   { to: "/herd", label: "Ферма", icon: "M12 3 2 9v12h7v-6h6v6h7V9z" },
   { to: "/animals", label: "Тварини", icon: "M4 6h16v2H4zm0 5h16v2H4zm0 5h10v2H4z" },
   { to: "/model", label: "Модель", icon: "M12 2 3 7v10l9 5 9-5V7zm0 2.3 6.7 3.7L12 11.7 5.3 8zM5 9.7l6 3.3v6.6l-6-3.3zm8 9.9V13l6-3.3v6.6z" },
-  { to: "/about", label: "Про систему", icon: "M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20" },
+  { to: "/about", label: "Про систему", short: "Система", icon: "M11 7h2v2h-2zm0 4h2v6h-2zm1-9a10 10 0 1 0 0 20 10 10 0 0 0 0-20" },
 ];
 
 function Icon({ d }: { d: string }) {
@@ -39,7 +40,7 @@ function KeyDialog() {
 }
 
 export function Layout() {
-  const { connection, herds, herdId, setHerdId, error } = useApp();
+  const { connection, herds, herdId, setHerdId, error, demo } = useApp();
   return (
     <>
       <StarField />
@@ -60,13 +61,14 @@ export function Layout() {
               </select>
             </label>
           )}
+          <PhoneButton demo={demo} />
         </div>
       </header>
       <div className="shell">
         <nav className="nav" aria-label="Розділи">
           {NAV.map((n) => (
             <NavLink key={n.to} to={n.to} end={n.to === "/"} className="nav-i">
-              <Icon d={n.icon} /><span>{n.label}</span>
+              <Icon d={n.icon} /><span className={"short" in n ? "nav-long" : undefined}>{n.label}</span>{"short" in n && <span className="nav-s">{n.short}</span>}
             </NavLink>
           ))}
         </nav>

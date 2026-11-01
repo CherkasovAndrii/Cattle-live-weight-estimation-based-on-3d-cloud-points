@@ -108,7 +108,7 @@ def demo_client(model, tmp_path, table):  # noqa: F811
     service = WeightService(model, Store(tmp_path / "farm.sqlite3"), RowsByTag(table))
     herd = service.create_herd("Демо-ферма «Абердин-ангуси»").id
     demo = Demo([Sample("cowdb2-7", herd, "cowdb2", "7", 640.0, paths)], {"cowdb2": herd},
-                "http://192.168.1.5:8000/weigh#key=k")
+                [("internet", "https://a-b.trycloudflare.com/weigh#key=k"), ("lan", "http://192.168.1.5:8000/weigh#key=k")])
     return TestClient(create_app(service, api_key=KEY, site_dir=SITE_DIR, demo=demo))
 
 
@@ -125,8 +125,30 @@ def test_demo_lists_farms_and_samples_and_serves_their_clouds(demo_client):
 
 def test_demo_qr_code_points_phones_at_the_app(demo_client):
     pytest.importorskip("qrcode")
-    r = demo_client.get("/v1/demo/qr.svg", headers=AUTH)
-    assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml") and "<svg" in r.text
+    for i in (0, 1):
+        r = demo_client.get(f"/v1/demo/qr.svg?i={i}", headers=AUTH)
+        assert r.status_code == 200 and r.headers["content-type"].startswith("image/svg+xml") and "<svg" in r.text
+    assert demo_client.get("/v1/demo/qr.svg?i=2", headers=AUTH).status_code == 404
+    urls = demo_client.get("/v1/demo", headers=AUTH).json()["phone_urls"]
+    assert [u["route"] for u in urls] == ["internet", "lan"] and urls[1]["url"].startswith("http://192.168.1.5")
+
+
+def test_phone_address_prefers_home_wifi_over_virtual_and_vpn_adapters(monkeypatch):
+    import socket
+
+    from cattle3d import demo as D
+
+    class Sock:
+        def __init__(self, *a): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def connect(self, _): pass
+        def getsockname(self): return ("26.10.0.4", 0)  # Radmin VPN on the default route
+
+    monkeypatch.setattr(socket, "socket", Sock)
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a: [(0, 0, 0, "", (ip, 0)) for ip in
+                                                          ("172.24.80.1", "192.168.0.105", "127.0.0.1")])
+    assert D.lan_addresses() == ["192.168.0.105", "172.24.80.1", "26.10.0.4"]
 
 
 def test_console_opens_from_the_phone_link_and_demo_routes_need_a_demo(demo_client, model, tmp_path, table):  # noqa: F811

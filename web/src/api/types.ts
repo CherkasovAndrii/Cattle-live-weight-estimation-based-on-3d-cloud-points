@@ -103,4 +103,6 @@ export interface DemoInfo {
   herds: { id: number; key: string; farm: string; breed: string; dataset: string }[];
   samples: DemoSample[];
   phone_url: string | null;
+  /** Addresses a phone can open, best first: "internet" (tunnel) or "lan" (same Wi-Fi). */
+  phone_urls?: { route: "internet" | "lan"; label: string; url: string }[];
 }

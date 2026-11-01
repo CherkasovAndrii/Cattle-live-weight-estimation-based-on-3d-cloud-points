@@ -304,10 +304,11 @@ def create_app(
             return FileResponse(path, media_type="application/octet-stream", filename=f"{sample_id}_{view.value}.ply")
 
         @app.get("/v1/demo/qr.svg", tags=["demo"], dependencies=v1)
-        def demo_qr() -> Response:
-            svg = demo.qr_svg()
+        def demo_qr(i: int = 0) -> Response:
+            """QR code of phone address number ``i`` from ``/v1/demo`` ``phone_urls``."""
+            svg = demo.qr_svg(i)
             if svg is None:
-                raise HTTPException(404, "QR code needs the optional package qrcode")
+                raise HTTPException(404, "no such phone address, or the optional package qrcode is missing")
             return Response(svg, media_type="image/svg+xml")
 
     # Mounted last so the API routes above take precedence over "/".

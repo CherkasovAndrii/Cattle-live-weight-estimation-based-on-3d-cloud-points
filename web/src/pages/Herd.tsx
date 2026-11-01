@@ -1,11 +1,12 @@
 // The farm: herd calibration from reference weighings, drift control from
 // spot weighings, all scans with scale readings added after the fact, new
 // farms, and the phone link.
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { Scan, ScanStatus } from "../api/types";
 import { Card, ErrorBox, KeyValues, Loading, Pill } from "../components/ui";
+import { PhoneLinks, phoneLinks } from "../components/PhoneLinks";
 import { useApp, useLoad } from "../lib/state";
 import { errorUk, fmt, when } from "../lib/text";
 import { driftText } from "./Overview";
@@ -37,13 +38,11 @@ export function Herd() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const [qr, setQr] = useState<string | null>(null);
   const { data, error, loading } = useLoad(async () => {
     if (herdId == null) return null;
     const [status, scans] = await Promise.all([api.herdStatus(herdId), api.scans(herdId, 500)]);
     return { status, scans };
   }, [herdId]);
-  useEffect(() => { if (demo?.phone_url) api.demoQr().then(setQr); }, [demo]);
 
   if (herdId == null || (loading && !data)) return <Loading />;
   if (!data) return <ErrorBox text={error} />;
@@ -145,12 +144,9 @@ export function Herd() {
             <button type="button" className="btn" onClick={create} disabled={!name.trim()}>Створити</button>
           </div>
         </Card>
-        {demo?.phone_url && (
+        {phoneLinks(demo).length > 0 && (
           <Card title="Відкрити на телефоні">
-            <div className="phone">
-              {qr && <img className="qr" alt="QR-код адреси для телефона" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(qr)}`} />}
-              <p className="small">Наведіть камеру телефона на код. Адреса: <code>{demo.phone_url.replace(/#key=.*/, "")}</code></p>
-            </div>
+            <PhoneLinks links={phoneLinks(demo)} />
           </Card>
         )}
       </div>

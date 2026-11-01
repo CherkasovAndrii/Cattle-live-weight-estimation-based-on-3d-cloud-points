@@ -7,12 +7,14 @@ if [ -z "$1" ]; then
   echo "usage: sh scripts/run_demo.sh PATH_TO_CowDatabase2 [PATH_TO_CowDatabase]" >&2
   exit 2
 fi
-if [ ! -x .venv/bin/cattle3d ]; then
+if [ ! -x .venv/bin/python ]; then
   python3 -m venv .venv
   .venv/bin/pip install --upgrade pip
-  .venv/bin/pip install -e ".[api,demo]"
 fi
+# Quick when nothing changed; picks up new dependencies after git pull.
+.venv/bin/pip install -q -e ".[api,demo]"
 set -- --cowdb2 "$1" ${2:+--cowdb1 "$2"}
-# With cloudflared installed, phones on any network get an internet address.
-if command -v cloudflared >/dev/null 2>&1; then set -- "$@" --tunnel; fi
+# Phones on any network (mobile data too) get an internet address through a
+# Cloudflare tunnel; cloudflared is downloaded on first use. NO_TUNNEL=1 skips it.
+if [ "${NO_TUNNEL:-0}" != 1 ]; then set -- "$@" --tunnel; fi
 exec .venv/bin/cattle3d demo "$@"
