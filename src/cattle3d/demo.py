@@ -84,10 +84,25 @@ def demo_model(table: pd.DataFrame, holdout: dict[str, list[str]], path: Path) -
     return model
 
 
+def _lan_rank(address: str) -> int:
+    """Home and office Wi-Fi almost always hand out 192.168.x.x, then 10.x.x.x.
+    172.16-31.x.x is where WSL, Hyper-V and Docker put their virtual adapters,
+    and anything else (Radmin VPN 26.x, Hamachi 25.x, CGNAT 100.64.x) is a VPN
+    a phone cannot reach. The QR code encodes the best-ranked address."""
+    a, b = (int(x) for x in address.split(".")[:2])
+    if a == 192 and b == 168:
+        return 0
+    if a == 10:
+        return 1
+    if a == 172 and 16 <= b <= 31:
+        return 2
+    return 3
+
+
 def lan_addresses() -> list[str]:
-    """This computer's IPv4 addresses a phone could reach, the one on the
-    default route first (no packet is sent). Virtual adapters (WSL, Hyper-V,
-    VirtualBox, VPN) also show up, which is why all of them are printed."""
+    """This computer's IPv4 addresses a phone could reach, best first (see
+    ``_lan_rank``; ties keep the address on the default route first). No
+    packet is sent. Virtual adapters show up too, so all of them are offered."""
     found: list[str] = []
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -104,15 +119,59 @@ def lan_addresses() -> list[str]:
         if address not in found:
             found.append(address)
     usable = [a for a in found if not a.startswith(("127.", "169.254.", "0."))]
-    return usable or ["127.0.0.1"]
+    return sorted(usable, key=_lan_rank) or ["127.0.0.1"]
 
 
-def start_tunnel(port: int, timeout_s: float = 40.0) -> tuple[str, "subprocess.Popen[str]"] | None:
+CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/"
+
+
+def cloudflared_path(cache: Path) -> str | None:
+    """``cloudflared`` from PATH, else a copy downloaded once into ``cache``
+    from Cloudflare's official GitHub releases. None when neither works."""
+    exe = shutil.which("cloudflared")
+    if exe:
+        return exe
+    import os
+    import platform
+    import stat
+    import tarfile
+    import urllib.request
+
+    system, machine = platform.system().lower(), platform.machine().lower()
+    arch = "arm64" if machine in ("arm64", "aarch64") else "amd64"
+    name = {"windows": f"cloudflared-windows-{arch}.exe", "linux": f"cloudflared-linux-{arch}",
+            "darwin": f"cloudflared-darwin-{arch}.tgz"}.get(system)
+    if name is None:
+        return None
+    target = cache / ("cloudflared.exe" if system == "windows" else "cloudflared")
+    if target.is_file():
+        return str(target)
+    print(f"  downloading cloudflared ({name}) from github.com/cloudflare once…", flush=True)
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+        tmp = cache / (name + ".part")
+        urllib.request.urlretrieve(CLOUDFLARED_URL + name, tmp)
+        if name.endswith(".tgz"):
+            with tarfile.open(tmp) as tar:
+                member = next(m for m in tar.getmembers() if m.name.endswith("cloudflared"))
+                with tar.extractfile(member) as src, open(target, "wb") as dst:  # type: ignore[union-attr]
+                    shutil.copyfileobj(src, dst)
+            tmp.unlink()
+        else:
+            os.replace(tmp, target)
+        target.chmod(target.stat().st_mode | stat.S_IEXEC)
+    except Exception as e:  # no internet, proxy, blocked download: the LAN address still works
+        print(f"  could not download cloudflared: {e}", flush=True)
+        return None
+    return str(target)
+
+
+def start_tunnel(port: int, cache: Path, timeout_s: float = 40.0) -> tuple[str, "subprocess.Popen[str]"] | None:
     """A public https address for this computer through a Cloudflare quick
     tunnel (no account), so a phone on any network, mobile data included,
-    reaches the demo. Needs ``cloudflared`` on PATH; None when it is missing
-    or does not answer in time."""
-    exe = shutil.which("cloudflared")
+    reaches the demo. Uses ``cloudflared_path``; None when it is missing or
+    does not answer in time."""
+    exe = cloudflared_path(cache)
     if exe is None:
         return None
     proc = subprocess.Popen(
@@ -139,11 +198,22 @@ def start_tunnel(port: int, timeout_s: float = 40.0) -> tuple[str, "subprocess.P
     return found[0], proc
 
 
+PHONE_ROUTES = {"internet": "через інтернет, будь-яка мережа", "lan": "та сама Wi-Fi мережа"}
+
+
 class Demo:
-    def __init__(self, samples: list[Sample], herds: dict[str, int], phone_url: str | None) -> None:
+    """``phone_urls``: (route, url) pairs a phone can open, best first; route is
+    "internet" (tunnel or a public address) or "lan" (same Wi-Fi)."""
+
+    def __init__(self, samples: list[Sample], herds: dict[str, int],
+                 phone_urls: list[tuple[str, str]] | None = None) -> None:
         self.samples = {s.id: s for s in samples}
         self.herds = herds
-        self.phone_url = phone_url
+        self.phone_urls = list(phone_urls or [])
+
+    @property
+    def phone_url(self) -> str | None:
+        return self.phone_urls[0][1] if self.phone_urls else None
 
     def info(self) -> dict[str, object]:
         return {
@@ -155,21 +225,23 @@ class Demo:
                 for s in self.samples.values()
             ],
             "phone_url": self.phone_url,
+            "phone_urls": [{"route": route, "label": PHONE_ROUTES.get(route, route), "url": url}
+                           for route, url in self.phone_urls],
         }
 
     def cloud_path(self, sample_id: str, view: View) -> Path | None:
         sample = self.samples.get(sample_id)
         return None if sample is None else sample.paths[view]
 
-    def qr_svg(self) -> str | None:
-        if not self.phone_url:
+    def qr_svg(self, index: int = 0) -> str | None:
+        if not 0 <= index < len(self.phone_urls):
             return None
         try:
             import qrcode
             import qrcode.image.svg
         except ImportError:
             return None
-        image = qrcode.make(self.phone_url, image_factory=qrcode.image.svg.SvgPathImage, border=2)
+        image = qrcode.make(self.phone_urls[index][1], image_factory=qrcode.image.svg.SvgPathImage, border=2)
         return image.to_string(encoding="unicode")
 
 
@@ -240,7 +312,8 @@ def ensure_features(path: Path, roots: dict[str, Path], workers: int = 4) -> Non
 
 def prepare(
     features_path: Path, model_path: Path, db_path: Path,
-    cowdb2: Path | None = None, cowdb1: Path | None = None, phone_url: str | None = None,
+    cowdb2: Path | None = None, cowdb1: Path | None = None,
+    phone_urls: list[tuple[str, str]] | None = None,
 ) -> tuple[WeightService, Demo]:
     loaders = {HERD_A: (cowdb2, load_cowdatabase2), HERD_B: (cowdb1, load_cowdatabase)}
     if cowdb2 is None and cowdb1 is None:
@@ -264,4 +337,4 @@ def prepare(
                 a = records[animal_id]
                 samples.append(Sample(f"{herd}-{animal_id}", herds[herd], herd, animal_id, a.weight_kg, a.view_paths,
                                       capture_rig(a)))
-    return service, Demo(samples, herds, phone_url)
+    return service, Demo(samples, herds, phone_urls)

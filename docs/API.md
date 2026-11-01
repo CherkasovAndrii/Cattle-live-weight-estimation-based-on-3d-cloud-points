@@ -2,8 +2,8 @@
 
 A REST service around the same library call the study uses
 (`features_from_clouds` → `WeightModel.predict`), so the API computes features
-exactly as training did. The presentation website and the farm web app at
-`/app/` are clients of this API.
+exactly as training did. The React web console at `/` (source in `web/`) is
+a client of this API and uses nothing else.
 
 ```bash
 pip install -e ".[api]"
@@ -11,9 +11,11 @@ cattle3d serve                                   # http://127.0.0.1:8000, docs a
 CATTLE3D_API_KEY=... cattle3d serve --host 0.0.0.0 --db /srv/farm.sqlite3
 ```
 
-The presentation website is served at `/` and the thesis figures at
-`/figures/{uk,en}/` (both public; `--no-site` turns the site off). Its live
-demo calls this API and asks for the key when one is set.
+The web console is served at `/` and the thesis figures at
+`/figures/{uk,en}/` (both public; `--no-site` turns the console off). Page
+addresses such as `/herd` or `/animals/UA-0427` return the console's
+`index.html`, unknown `/v1` paths and missing files stay 404. The console
+calls this API and asks for the key when one is set.
 
 Serving beyond localhost requires `CATTLE3D_API_KEY`. Every `/v1` route then
 needs the `X-API-Key` header. Herds, scans, weighings and calibrations are

@@ -1,6 +1,7 @@
 """The REST API end to end, on synthetic clouds and a small synthetic model."""
 
 import io
+import re
 
 import numpy as np
 import pandas as pd
@@ -231,7 +232,7 @@ def test_cloud_fixture_is_segmentable(side_scene_module, top_scene_module):
     assert PHYSICS_FEATURE in features_from_clouds(clouds)
 
 
-def test_website_is_served_at_the_root_without_hiding_the_api(model, tmp_path, table):
+def test_web_console_is_served_at_the_root_without_hiding_the_api(model, tmp_path, table):
     from cattle3d.web import SITE_DIR
 
     figures = tmp_path / "figures" / "uk"
@@ -240,12 +241,17 @@ def test_website_is_served_at_the_root_without_hiding_the_api(model, tmp_path, t
     service = WeightService(model, Store(tmp_path / "farm.sqlite3"), RowsByTag(table))
     c = TestClient(create_app(service, api_key=KEY, site_dir=SITE_DIR, figures_dir=tmp_path / "figures"))
     page = c.get("/")
-    assert page.status_code == 200 and "<title>Cattle3D Live Weight</title>" in page.text
-    assert c.get("/site.js").status_code == 200
-    for script in ("space.js", "hero.js"):  # the page and the farm app load them
-        assert f'src="{script}"' in page.text and c.get(f"/{script}").status_code == 200
-    assert 'src="../space.js"' in c.get("/app/").text
-    points = c.get("/img/cow70_points.bin").content  # hero cloud: int16 x, y, z mm + uint8 view + pad
+    assert page.status_code == 200 and 'lang="uk"' in page.text and '<div id="root">' in page.text
+    for script in re.findall(r'src="(/assets/[^"]+\.js)"', page.text):  # the built React bundle
+        assert c.get(script).status_code == 200
+    # Browser-router pages get the app; API paths, missing assets and figures stay 404.
+    for page_path in ("/herd", "/animals/UA-0427", "/weigh"):
+        assert c.get(page_path).text == page.text
+    assert c.get("/v1/nope", headers=AUTH).status_code == 404
+    assert c.get("/assets/missing.js").status_code == 404
+    assert c.get("/figures/uk/09_within_herd_oof.png").content == b"\x89PNG"
+    assert c.get("/v1/herds").status_code == 401  # the console does not open the API
+    points = c.get("/img/cow70_points.bin").content  # merged cloud: int16 x, y, z mm + uint8 view + pad
     assert len(points) % 8 == 0 and len(points) // 8 > 10_000
     assert set(points[6::8]) == {0, 1, 2}
     assert c.get("/figures/uk/09_within_herd_oof.png").content == b"\x89PNG"
