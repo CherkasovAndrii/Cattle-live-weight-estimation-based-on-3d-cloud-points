@@ -9,14 +9,15 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
 
 from cattle3d.api.store import Calibration, Herd, NewScan, Scan, Store
-from cattle3d.geometry.quality import quality_reasons, view_quality
-from cattle3d.geometry.segment import SegmentationError
+from cattle3d.geometry.quality import ViewQuality, quality_reasons, view_quality
+from cattle3d.geometry.rig import MergedViews, Rig, merge_views
+from cattle3d.geometry.segment import SegmentationError, SegmentationTrace
 from cattle3d.modeling.calibration import (
     RECOMMENDED_CALIBRATION_ANIMALS,
     DriftCheck,
@@ -26,7 +27,6 @@ from cattle3d.modeling.calibration import (
 )
 from cattle3d.modeling.weight_model import WeightModel
 from cattle3d.pipeline import analyse_clouds, features_from_clouds
-from cattle3d.geometry.rig import MergedViews, Rig, merge_views
 from cattle3d.preview import scan_preview
 from cattle3d.types import OrganizedCloud, View
 
@@ -67,6 +67,39 @@ class HerdStatus:
     recommended_reference_animals: int
     scans_by_status: dict[str, int]
     drift: DriftCheck | None
+
+
+@dataclass(frozen=True)
+class _Analysis:
+    """What one scan's clouds gave: the features and, when the views were
+    segmented here, what is needed to explain the decision to the operator."""
+
+    features: dict[str, float]
+    traces: dict[View, SegmentationTrace] | None = None
+    quality: list[ViewQuality] = field(default_factory=list)
+    merged: MergedViews | None = None
+    analyse_ms: float = 0.0
+
+    @property
+    def reasons(self) -> list[str]:
+        """Is the camera as good as the training cameras, and is it one animal?"""
+        reasons = quality_reasons(self.quality)
+        if self.merged is not None and not self.merged.same_animal:
+            reasons.append(MIXED_VIEWS)
+        return reasons
+
+
+def _analyse(clouds: dict[View, OrganizedCloud], station: Rig | None) -> _Analysis:
+    t0 = time.perf_counter()
+    features, traces = analyse_clouds(clouds)
+    analyse_ms = 1000 * (time.perf_counter() - t0)
+    quality = [view_quality(clouds[v], v, t.result.floor) for v, t in traces.items()]
+    merged = None
+    if station is not None:
+        merged = merge_views(clouds, traces, station)
+        if merged.contradictory:
+            raise ValueError(CONTRADICTORY_VIEWS)
+    return _Analysis(features, traces, quality, merged, analyse_ms)
 
 
 def _correction(c: Calibration | None) -> HerdCorrection | None:
@@ -129,7 +162,7 @@ class WeightService:
         the station calibration (``rig``, else the herd's) the three views are
         also checked to show one animal; if not, the weight is flagged.
         """
-        return self._scan_clouds(herd_id, animal_tag, clouds, scale_weight_kg, rig, {})
+        return self._scan_clouds(herd_id, animal_tag, clouds, scale_weight_kg, rig, preview=False)[0]
 
     def scan_with_preview(
         self, herd_id: int, animal_tag: str, clouds: dict[View, OrganizedCloud], scale_weight_kg: float | None = None,
@@ -137,67 +170,43 @@ class WeightService:
     ) -> tuple[Scan, dict[str, object] | None]:
         """``scan`` plus what the cameras saw (see ``cattle3d.preview``) and how
         long each stage took. The preview is None when the scan was refused."""
-        holder: dict[str, object] = {"traces_needed": True}
         t0 = time.perf_counter()
-        stored = self._scan_clouds(herd_id, animal_tag, clouds, scale_weight_kg, rig, holder)
+        stored, analysis = self._scan_clouds(herd_id, animal_tag, clouds, scale_weight_kg, rig, preview=True)
         total_ms = 1000 * (time.perf_counter() - t0)
-        if "traces" not in holder or stored.status == "refused":
+        if analysis is None or analysis.traces is None or stored.status == "refused":
             return stored, None
-        preview = scan_preview(holder["traces"], holder.get("merged"))  # type: ignore[arg-type]
-        features = holder["features"]
-        preview["measures"] = {k: round(float(features[f]), 3) for k, f in PREVIEW_MEASURES.items()}  # type: ignore[index]
+        preview = scan_preview(analysis.traces, analysis.merged)
+        preview["measures"] = {k: round(float(analysis.features[f]), 3) for k, f in PREVIEW_MEASURES.items()}
         preview["recording_quality"] = {  # see cattle3d.geometry.quality
             q.view.value: {"floor_noise_rel": None if q.floor_noise_rel is None else round(q.floor_noise_rel, 5),
                            "edge_density": round(q.edge_density, 3)}
-            for q in holder["quality"]  # type: ignore[attr-defined]
+            for q in analysis.quality
         }
-        preview["timing_ms"] = {"segmentation_and_features_ms": round(holder["analyse_ms"]),  # type: ignore[arg-type]
-                                "total_ms": round(total_ms)}
+        preview["timing_ms"] = {"segmentation_and_features_ms": round(analysis.analyse_ms), "total_ms": round(total_ms)}
         return stored, preview
-
-    def _scan_clouds(
-        self, herd_id: int, animal_tag: str, clouds: dict[View, OrganizedCloud], scale_weight_kg: float | None,
-        rig: Rig | None, holder: dict[str, object],
-    ) -> Scan:
-        station = rig or self.station_rigs.get(herd_id)
-        if self.extract is not features_from_clouds and not holder.get("traces_needed"):
-            # An injected extractor (tests, other sensors) has no views to compare.
-            return self._scan(herd_id, animal_tag, lambda: self.extract(clouds), scale_weight_kg)
-
-        def compute() -> dict[str, float]:
-            t0 = time.perf_counter()
-            features, traces = analyse_clouds(clouds)
-            holder["analyse_ms"] = 1000 * (time.perf_counter() - t0)
-            holder["traces"], holder["features"] = traces, features
-            holder["quality"] = [view_quality(clouds[v], v, t.result.floor) for v, t in traces.items()]
-            if station is not None:
-                merged = merge_views(clouds, traces, station)
-                holder["merged"] = merged
-                if merged.contradictory:
-                    raise ValueError(CONTRADICTORY_VIEWS)
-            return features
-
-        def recording_checks() -> list[str]:
-            # Is the camera as good as the training cameras, and is it one animal?
-            reasons = quality_reasons(holder.get("quality", []))  # type: ignore[arg-type]
-            merged = holder.get("merged")
-            if isinstance(merged, MergedViews) and not merged.same_animal:
-                reasons.append(MIXED_VIEWS)
-            return reasons
-
-        return self._scan(herd_id, animal_tag, compute, scale_weight_kg, recording_checks)
 
     def scan_from_features(
         self, herd_id: int, animal_tag: str, features: dict[str, float], scale_weight_kg: float | None = None
     ) -> Scan:
         """Store a scan whose features were computed elsewhere (e.g. imported
         from an earlier extraction), with the same decision rules."""
-        return self._scan(herd_id, animal_tag, lambda: dict(features), scale_weight_kg)
+        return self._scan(herd_id, animal_tag, lambda: _Analysis(dict(features)), scale_weight_kg)[0]
+
+    def _scan_clouds(
+        self, herd_id: int, animal_tag: str, clouds: dict[View, OrganizedCloud], scale_weight_kg: float | None,
+        rig: Rig | None, preview: bool,
+    ) -> tuple[Scan, _Analysis | None]:
+        if self.extract is not features_from_clouds and not preview:
+            # An injected extractor (tests, other sensors) has no views to compare.
+            return self._scan(herd_id, animal_tag, lambda: _Analysis(self.extract(clouds)), scale_weight_kg)
+        station = rig or self.station_rigs.get(herd_id)
+        return self._scan(herd_id, animal_tag, lambda: _analyse(clouds, station), scale_weight_kg)
 
     def _scan(
-        self, herd_id: int, animal_tag: str, compute: Callable[[], dict[str, float]], scale_weight_kg: float | None,
-        extra_reasons: Callable[[], list[str]] = list,
-    ) -> Scan:
+        self, herd_id: int, animal_tag: str, analyse: Callable[[], _Analysis], scale_weight_kg: float | None,
+    ) -> tuple[Scan, _Analysis | None]:
+        """Validate the request, analyse, predict and store; the analysis is
+        None when the scan was refused."""
         self.herd(herd_id)
         animal_tag = animal_tag.strip()
         if not animal_tag:
@@ -205,32 +214,30 @@ class WeightService:
         if scale_weight_kg is not None:
             _check_weight(scale_weight_kg)
         calibration = self.store.current_calibration(herd_id)
+        calibration_id = None if calibration is None else calibration.id
         version = self.model.package_version
+        analysis: _Analysis | None
         try:
-            features = compute()
+            analysis = analyse()
         except (SegmentationError, ValueError) as exc:
-            stored = self.store.add_scan(
-                NewScan(herd_id, animal_tag, "refused", [f"rescan: {exc}"], None, None, None, None,
-                        None if calibration is None else calibration.id, None, version)
-            )
+            analysis = None
+            new = NewScan(herd_id, animal_tag, "refused", [f"rescan: {exc}"], None, None, None, None,
+                          calibration_id, None, version)
         else:
-            row = pd.DataFrame([features])
+            row = pd.DataFrame([analysis.features])
             raw = float(self.model.raw_predict(row)[0])
             prediction = self.model.predict(row, correction=_correction(calibration))[0]
             reasons = prediction.reason.split("; ") if prediction.reason else []
-            reasons += extra_reasons()
+            reasons += analysis.reasons
             if calibration is None:
                 reasons.append(UNCALIBRATED)
-            stored = self.store.add_scan(
-                NewScan(
-                    herd_id, animal_tag, "flagged" if reasons else "trusted", reasons, raw,
-                    prediction.weight_kg, prediction.lower_kg, prediction.upper_kg,
-                    None if calibration is None else calibration.id, features, version,
-                )
-            )
+            new = NewScan(herd_id, animal_tag, "flagged" if reasons else "trusted", reasons, raw,
+                          prediction.weight_kg, prediction.lower_kg, prediction.upper_kg,
+                          calibration_id, analysis.features, version)
+        stored = self.store.add_scan(new)
         if scale_weight_kg is not None:
-            return self.record_weighing(stored.id, scale_weight_kg)
-        return stored
+            stored = self.record_weighing(stored.id, scale_weight_kg)
+        return stored, analysis
 
     def get_scan(self, scan_id: int) -> Scan:
         scan = self.store.scan(scan_id)

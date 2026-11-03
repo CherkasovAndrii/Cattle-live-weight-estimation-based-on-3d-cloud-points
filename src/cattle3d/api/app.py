@@ -34,12 +34,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from cattle3d import __version__
 from cattle3d.api.service import InvalidRequestError, NotFoundError, WeightService
-from cattle3d.api.store import Calibration, DuplicateError, Scan, Store
+from cattle3d.api.store import Calibration, DuplicateError, Herd, Scan, Store
 from cattle3d.demo import Demo
 from cattle3d.geometry.rig import Rig
 from cattle3d.io.ply import PlyFormatError, parse_organized_cloud
 from cattle3d.modeling.weight_model import WeightModel
-from cattle3d.types import OrganizedCloud, View
+from cattle3d.types import ALL_VIEWS, OrganizedCloud, View
 from cattle3d.web import SITE_DIR
 
 # A dense Kinect v2 frame with colour is about 3.5 MB; anything far above that
@@ -118,6 +118,10 @@ class ScanResultOut(ScanOut):
 
 class WeighingIn(BaseModel):
     weight_kg: float = Field(gt=0, examples=[612.5])
+
+
+def _herd(herd: Herd) -> HerdOut:
+    return HerdOut(**asdict(herd))
 
 
 def _scan(scan: Scan) -> ScanOut:
@@ -215,18 +219,18 @@ def create_app(
 
     @app.post("/v1/herds", tags=["herds"], dependencies=v1, status_code=201)
     def create_herd(body: HerdIn) -> HerdOut:
-        return HerdOut(**asdict(service.create_herd(body.name)))
+        return _herd(service.create_herd(body.name))
 
     @app.get("/v1/herds", tags=["herds"], dependencies=v1)
     def list_herds() -> list[HerdOut]:
-        return [HerdOut(**asdict(h)) for h in service.store.herds()]
+        return [_herd(h) for h in service.store.herds()]
 
     @app.get("/v1/herds/{herd_id}", tags=["herds"], dependencies=v1)
     def herd_status(herd_id: int) -> HerdStatusOut:
         """Calibration, reference weighings collected, scan counts and drift."""
         s = service.herd_status(herd_id)
         return HerdStatusOut(
-            herd=HerdOut(**asdict(s.herd)),
+            herd=_herd(s.herd),
             calibrated=s.calibration is not None,
             calibration=None if s.calibration is None else _calibration(s.calibration),
             n_reference_animals=s.n_reference_animals,
@@ -259,17 +263,17 @@ def create_app(
         the animal was also put on the scale (reference or spot weighing)."""
         service.herd(herd_id)
         station = _rig(rig)
-        clouds = {View.LEFT: await _read_cloud(left, View.LEFT),
-                  View.RIGHT: await _read_cloud(right, View.RIGHT),
-                  View.TOP: await _read_cloud(top, View.TOP)}
+        uploads = dict(zip(ALL_VIEWS, (left, right, top)))
+        clouds = {view: await _read_cloud(upload, view) for view, upload in uploads.items()}
         # Segmentation is CPU-bound: keep it off the event loop.
         if preview:
             result, shown = await run_in_threadpool(
                 service.scan_with_preview, herd_id, animal_tag, clouds, scale_weight_kg, station
             )
-            return ScanResultOut(**asdict(result), preview=shown)
-        result = await run_in_threadpool(service.scan, herd_id, animal_tag, clouds, scale_weight_kg, station)
-        return ScanResultOut(**asdict(result))
+        else:
+            result = await run_in_threadpool(service.scan, herd_id, animal_tag, clouds, scale_weight_kg, station)
+            shown = None
+        return ScanResultOut(**asdict(result), preview=shown)
 
     @app.get("/v1/herds/{herd_id}/scans", tags=["scans"], dependencies=v1)
     def herd_scans(herd_id: int, limit: int = 50) -> list[ScanOut]:

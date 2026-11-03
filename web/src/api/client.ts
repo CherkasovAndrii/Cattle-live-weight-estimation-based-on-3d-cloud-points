@@ -1,7 +1,8 @@
 // One place that talks HTTP. Every /v1 call carries the API key; a 401 asks the
 // operator for the key once and retries. Errors surface as ApiError with the
 // server's own message, which lib/text.ts turns into Ukrainian.
-import type { DemoInfo, Herd, HerdStatus, ModelCard, Scan, ScanResult, View } from "./types";
+import { store, stored } from "../lib/storage";
+import type { Calibration, DemoInfo, Herd, HerdStatus, ModelCard, Scan, ScanResult, View } from "./types";
 
 const KEY_STORE = "cattle3d-key";
 
@@ -9,13 +10,6 @@ export class ApiError extends Error {
   constructor(public status: number, public detail: unknown) {
     super(typeof detail === "string" ? detail : JSON.stringify(detail));
   }
-}
-
-function load(key: string): string | null {
-  try { return localStorage.getItem(key); } catch { return null; }
-}
-function save(key: string, value: string): void {
-  try { localStorage.setItem(key, value); } catch { /* storage blocked: key lives for this tab only */ }
 }
 
 type KeyPrompt = () => Promise<string>;
@@ -28,15 +22,15 @@ export class Api {
     // The server prints links with #key=…: keep the key and drop it from the address bar.
     const fromHash = new URLSearchParams(location.hash.slice(1)).get("key");
     if (fromHash) {
-      save(KEY_STORE, fromHash);
+      store(KEY_STORE, fromHash);
       history.replaceState(null, "", location.pathname + location.search);
     }
-    this.key = fromHash ?? load(KEY_STORE) ?? "";
+    this.key = fromHash ?? stored(KEY_STORE) ?? "";
   }
 
   onKeyNeeded(prompt: KeyPrompt): void { this.prompt = prompt; }
 
-  setKey(key: string): void { this.key = key; save(KEY_STORE, key); }
+  setKey(key: string): void { this.key = key; store(KEY_STORE, key); }
 
   private async request(path: string, init: RequestInit = {}, retried = false): Promise<Response> {
     const res = await fetch(this.base + path, { ...init, headers: { ...(init.headers ?? {}), "X-API-Key": this.key } });
@@ -74,7 +68,7 @@ export class Api {
   herds(): Promise<Herd[]> { return this.json("/v1/herds"); }
   createHerd(name: string): Promise<Herd> { return this.send("POST", "/v1/herds", { name }); }
   herdStatus(id: number): Promise<HerdStatus> { return this.json(`/v1/herds/${id}`); }
-  calibrate(id: number) { return this.send("POST", `/v1/herds/${id}/calibration`); }
+  calibrate(id: number): Promise<Calibration> { return this.send("POST", `/v1/herds/${id}/calibration`); }
   scans(herdId: number, limit = 200): Promise<Scan[]> { return this.json(`/v1/herds/${herdId}/scans?limit=${limit}`); }
   animal(herdId: number, tag: string): Promise<Scan[]> {
     return this.json(`/v1/herds/${herdId}/animals/${encodeURIComponent(tag)}/scans`);

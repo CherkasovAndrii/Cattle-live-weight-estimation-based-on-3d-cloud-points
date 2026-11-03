@@ -60,8 +60,8 @@ def floor_noise(
 ) -> FloorNoise | None:
     """Noise on the floor pixels within ``inlier_m`` of ``floor``; None if too
     little floor is in view."""
-    rng_m = np.linalg.norm(cloud.xyz, axis=2)
-    usable = cloud.valid & (rng_m > min_range_m) & (rng_m < max_range_m)
+    rng_m = cloud.ranges
+    usable = cloud.in_range(min_range_m, max_range_m)
     dist = np.where(usable, cloud.xyz @ floor.normal + floor.d, np.inf)
     on_floor = usable & (np.abs(dist) < inlier_m)
     trio = on_floor[:, :-2] & on_floor[:, 1:-1] & on_floor[:, 2:]

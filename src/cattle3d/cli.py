@@ -28,12 +28,15 @@ import pandas as pd
 DEFAULT_FEATURES = Path("data/features.csv")
 DEFAULT_MODEL = Path("artifacts/weight_model.joblib")
 REPORTS = Path("reports")
+LOCAL_HOSTS = ("127.0.0.1", "localhost")
 
 
 def _load_features(path: Path) -> pd.DataFrame:
+    from cattle3d.pipeline import read_feature_table
+
     if not path.is_file():
         sys.exit(f"{path} not found; run `cattle3d extract` first")
-    table = pd.read_csv(path, dtype={"animal_id": str}, keep_default_na=False, na_values=[""])
+    table = read_feature_table(path)
     failed = table[table["error"].notna()]
     if len(failed):
         print(f"excluding {len(failed)} animal(s) whose views could not be segmented:")
@@ -42,19 +45,35 @@ def _load_features(path: Path) -> pd.DataFrame:
     return table[table["error"].isna()].reset_index(drop=True)
 
 
-def cmd_extract(args: argparse.Namespace) -> None:
+def _load_herds(args: argparse.Namespace, join: str = "audited") -> list:
+    """The public herds named by ``--cowdb2`` / ``--cowdb1``, at least one."""
     from cattle3d.io.datasets import load_cowdatabase, load_cowdatabase2
-    from cattle3d.pipeline import extract_herd
 
-    tables = []
     herds = []
     if args.cowdb2:
         herds.append(load_cowdatabase2(Path(args.cowdb2)))
     if args.cowdb1:
-        herds.append(load_cowdatabase(Path(args.cowdb1), join=args.join))
+        herds.append(load_cowdatabase(Path(args.cowdb1), join=join))  # type: ignore[arg-type]
     if not herds:
         sys.exit("give --cowdb2 and/or --cowdb1")
-    for herd in herds:
+    return herds
+
+
+def _optional_path(value: str | None) -> Path | None:
+    return Path(value) if value else None
+
+
+def _views(left: object, right: object, top: object, base: Path = Path()) -> dict:
+    from cattle3d.types import View
+
+    return {View.LEFT: base / str(left), View.RIGHT: base / str(right), View.TOP: base / str(top)}
+
+
+def cmd_extract(args: argparse.Namespace) -> None:
+    from cattle3d.pipeline import extract_herd
+
+    tables = []
+    for herd in _load_herds(args, join=args.join):
         for skipped in herd.skipped:
             print(f"skip {herd.herd}/{skipped.animal_id}: {skipped.reason}")
         table = extract_herd(herd.animals, workers=args.workers)
@@ -126,7 +145,6 @@ def cmd_train(args: argparse.Namespace) -> None:
 def cmd_calibrate(args: argparse.Namespace) -> None:
     from cattle3d.modeling.weight_model import WeightModel
     from cattle3d.pipeline import features_from_files
-    from cattle3d.types import View
 
     reference = pd.read_csv(args.reference)
     required = {"left", "right", "top", "weight_kg"}
@@ -135,8 +153,8 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
     base = Path(args.reference).parent
     rows = []
     for _, r in reference.iterrows():
-        paths = {View.LEFT: base / r["left"], View.RIGHT: base / r["right"], View.TOP: base / r["top"]}
-        rows.append({**features_from_files(paths), "weight_kg": float(r["weight_kg"])})
+        rows.append({**features_from_files(_views(r["left"], r["right"], r["top"], base)),
+                     "weight_kg": float(r["weight_kg"])})
     model = WeightModel.load(Path(args.model))
     slope, intercept = model.calibrate_herd(args.herd, pd.DataFrame(rows))
     model.save(Path(args.model))
@@ -146,12 +164,9 @@ def cmd_calibrate(args: argparse.Namespace) -> None:
 def cmd_predict(args: argparse.Namespace) -> None:
     from cattle3d.modeling.weight_model import WeightModel
     from cattle3d.pipeline import features_from_files
-    from cattle3d.types import View
 
     model = WeightModel.load(Path(args.model))
-    features = features_from_files(
-        {View.LEFT: Path(args.left), View.RIGHT: Path(args.right), View.TOP: Path(args.top)}
-    )
+    features = features_from_files(_views(args.left, args.right, args.top))
     prediction = model.predict_row(features, herd=args.herd)
     print(json.dumps(asdict(prediction), indent=2))
 
@@ -172,8 +187,7 @@ def cmd_figures(args: argparse.Namespace) -> None:
         half_width = WeightModel.load(Path(args.model)).interval_half_width_kg
     paths = write_thesis_figures(
         Path(args.out), tuple(args.lang), table,
-        Path(args.cowdb2) if args.cowdb2 else None, Path(args.cowdb1) if args.cowdb1 else None,
-        study, half_width,
+        _optional_path(args.cowdb2), _optional_path(args.cowdb1), study, half_width,
     )
     for path in paths:
         print(f"wrote {path}")
@@ -187,7 +201,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
     except ImportError:
         sys.exit('the API needs its extra: pip install -e ".[api]"')
     api_key = os.environ.get("CATTLE3D_API_KEY")
-    if not api_key and args.host not in ("127.0.0.1", "localhost"):
+    if not api_key and args.host not in LOCAL_HOSTS:
         sys.exit("set CATTLE3D_API_KEY before serving beyond localhost")
     app = app_from_files(Path(args.model), Path(args.db), api_key, Path(args.figures), site=not args.no_site)
     uvicorn.run(app, host=args.host, port=args.port)
@@ -198,7 +212,8 @@ def cmd_demo(args: argparse.Namespace) -> None:
         import uvicorn
 
         from cattle3d.api.app import create_app
-        from cattle3d.demo import lan_addresses, prepare, start_tunnel
+        from cattle3d.demo import prepare
+        from cattle3d.network import lan_addresses, start_tunnel
         from cattle3d.web import SITE_DIR
     except ImportError:
         sys.exit('the demo needs the API extra: pip install -e ".[api,demo]"')
@@ -218,12 +233,12 @@ def cmd_demo(args: argparse.Namespace) -> None:
             print("  no tunnel (cloudflared missing or no answer): phones need the same Wi-Fi as this computer")
         else:
             phone_urls.append(("internet", tunnel[0]))
-    if args.host not in ("127.0.0.1", "localhost"):
+    if args.host not in LOCAL_HOSTS:
         phone_urls += [("lan", f"http://{a}:{args.port}") for a in lan_addresses()]
     phone_urls = [(route, f"{base}/weigh#key={key}") for route, base in phone_urls]
     service, demo = prepare(
         Path(args.features), Path(args.model), Path(args.db),
-        Path(args.cowdb2) if args.cowdb2 else None, Path(args.cowdb1) if args.cowdb1 else None, phone_urls,
+        _optional_path(args.cowdb2), _optional_path(args.cowdb1), phone_urls,
     )
     app = create_app(service, key, SITE_DIR, Path(args.figures), demo=demo)
     print(f"\n  demo animals: {len(demo.samples)} (not seen by the demo model)")
@@ -258,16 +273,10 @@ def cmd_sensor(args: argparse.Namespace) -> None:
     from cattle3d.evaluation import sensor
     from cattle3d.figures.draw import Lang
     from cattle3d.figures.sensor import sensor_tolerance
-    from cattle3d.io.datasets import load_cowdatabase, load_cowdatabase2
-    from cattle3d.modeling.models import VOLUME_FEATURES, ensemble_model
+    from cattle3d.modeling.models import VOLUME_FEATURES, deployable_model
+    from cattle3d.pipeline import read_feature_table
 
-    herds = []
-    if args.cowdb2:
-        herds.append(load_cowdatabase2(Path(args.cowdb2)))
-    if args.cowdb1:
-        herds.append(load_cowdatabase(Path(args.cowdb1)))
-    if not herds:
-        sys.exit("give --cowdb2 and/or --cowdb1")
+    herds = _load_herds(args)
     cache = Path(args.cache)
     cache.mkdir(parents=True, exist_ok=True)
     clean = sensor.Perturbation("noise", 0.0)
@@ -280,9 +289,9 @@ def cmd_sensor(args: argparse.Namespace) -> None:
             if not path.is_file():  # each level re-segments every animal; cached because it is slow
                 sensor.extract_degraded(herd.animals, p, workers=args.workers).to_csv(path, index=False)
                 print(f"{herd.herd}: extracted {p.label}")
-            tables[p] = pd.read_csv(path, dtype={"animal_id": str}, keep_default_na=False, na_values=[""])
+            tables[p] = read_feature_table(path)
         results += sensor.score_herd(
-            herd.herd, tables[clean], tables, VOLUME_FEATURES, lambda s: ensemble_model(VOLUME_FEATURES, s),
+            herd.herd, tables[clean], tables, VOLUME_FEATURES, deployable_model,
             lambda s: DummyRegressor(), seeds=tuple(range(args.seeds)),
         )
     floor_path = cache / "floor_noise.csv"

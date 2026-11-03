@@ -15,6 +15,8 @@ from sklearn.dummy import DummyRegressor
 
 from cattle3d.evaluation.experiments import (
     conformal_coverage,
+    conformal_quantile,
+    draw_reference,
     fit_predict,
     oof_predictions,
     recalibration_curve,
@@ -29,13 +31,11 @@ from cattle3d.evaluation.stats import (
 )
 from cattle3d.io.datasets import COMMON_MANUAL, HERD_A, HERD_B
 from cattle3d.modeling.models import (
-    PHYSICS_FEATURE,
     VOLUME_FEATURES,
-    ColumnSubset,
     ModelFactory,
-    ensemble_model,
+    deployable_model,
     lgbm_model,
-    physics_model,
+    physics_on,
     robust_linear_model,
 )
 
@@ -47,21 +47,24 @@ H3B_MARGIN_MAPE = 1.0
 RECAL_KS = (5, 10, 20, 30)
 
 
-def _physics(seed: int):
-    return ColumnSubset(physics_model(seed), (VOLUME_FEATURES.index(PHYSICS_FEATURE),))
+ENSEMBLE = "3-D ensemble (deployable)"
+MANUAL = "manual measurements (robust linear)"
+PHYSICS = "physics: a·volume + b"
+LINEAR = "3-D robust linear"
+
+
+def _physics(seed: int = 0):
+    return physics_on(VOLUME_FEATURES)
 
 
 MODELS: dict[str, tuple[ModelFactory, tuple[str, ...]]] = {
     "predict-mean": (lambda s: DummyRegressor(), VOLUME_FEATURES),
-    "manual measurements (robust linear)": (robust_linear_model, MANUAL_COLUMNS),
-    "physics: a·volume + b": (_physics, VOLUME_FEATURES),
-    "3-D robust linear": (robust_linear_model, VOLUME_FEATURES),
+    MANUAL: (robust_linear_model, MANUAL_COLUMNS),
+    PHYSICS: (_physics, VOLUME_FEATURES),
+    LINEAR: (robust_linear_model, VOLUME_FEATURES),
     "3-D LightGBM (nested tuning)": (lgbm_model, VOLUME_FEATURES),
-    "3-D ensemble (deployable)": (lambda s: ensemble_model(VOLUME_FEATURES, s), VOLUME_FEATURES),
+    ENSEMBLE: (deployable_model, VOLUME_FEATURES),
 }
-ENSEMBLE = "3-D ensemble (deployable)"
-MANUAL = "manual measurements (robust linear)"
-PHYSICS = "physics: a·volume + b"
 
 
 @dataclass
@@ -127,9 +130,7 @@ def transfer(source: pd.DataFrame, target: pd.DataFrame, target_within: HerdResu
     Xs, ys = _xy(source, VOLUME_FEATURES)
     Xt, yt = _xy(target, VOLUME_FEATURES)
     zero = {
-        PHYSICS: fit_predict(_physics, Xs, ys, Xt),
-        "3-D robust linear": fit_predict(robust_linear_model, Xs, ys, Xt),
-        ENSEMBLE: fit_predict(lambda s: ensemble_model(VOLUME_FEATURES, s), Xs, ys, Xt),
+        name: fit_predict(MODELS[name][0], Xs, ys, Xt) for name in (PHYSICS, LINEAR, ENSEMBLE)
     }
     bias = {name: bootstrap_ci(pred - yt) for name, pred in zero.items()}
     within_mape = metrics(yt, target_within.oof[ENSEMBLE]).mape
@@ -139,12 +140,10 @@ def transfer(source: pd.DataFrame, target: pd.DataFrame, target_within: HerdResu
     rng = np.random.default_rng(0)
     covs, widths = [], []
     for _ in range(500):
-        ref = rng.choice(yt.size, 20, replace=False)
-        rest = np.setdiff1d(np.arange(yt.size), ref)
+        ref, rest = draw_reference(rng, yt.size, 20)
         corrected = zero[ENSEMBLE] + (yt[ref] - zero[ENSEMBLE][ref]).mean()
         res = np.abs(corrected - yt)
-        r = np.sort(res[ref])
-        q = r[min(int(np.ceil(21 * 0.9)), 20) - 1]
+        q = conformal_quantile(res[ref], alpha=0.1)
         covs.append((res[rest] <= q).mean())
         widths.append(q)
     lo, hi = np.percentile(covs, [2.5, 97.5])
@@ -165,7 +164,7 @@ def transfer(source: pd.DataFrame, target: pd.DataFrame, target_within: HerdResu
 def pooled(table: pd.DataFrame, seeds: tuple[int, ...]) -> dict[str, dict[str, float]]:
     """Grouped CV on both herds together, scored per herd (H3d)."""
     X, y = _xy(table, VOLUME_FEATURES)
-    pred = oof_predictions(lambda s: ensemble_model(VOLUME_FEATURES, s), X, y, seeds=seeds).mean(axis=0)
+    pred = oof_predictions(deployable_model, X, y, seeds=seeds).mean(axis=0)
     out = {}
     for herd in table["herd"].unique():
         mask = (table["herd"] == herd).to_numpy()
@@ -175,12 +174,9 @@ def pooled(table: pd.DataFrame, seeds: tuple[int, ...]) -> dict[str, dict[str, f
 
 
 def run_study(table: pd.DataFrame, seeds: tuple[int, ...] = (0, 1, 2, 3, 4)) -> StudyResult:
-    herds = {}
-    for herd in (HERD_A, HERD_B):
-        sub = table[table["herd"] == herd].reset_index(drop=True)
-        herds[herd] = within_herd(sub, herd, seeds)
-    a = table[table["herd"] == HERD_A].reset_index(drop=True)
-    b = table[table["herd"] == HERD_B].reset_index(drop=True)
+    rows = {herd: table[table["herd"] == herd].reset_index(drop=True) for herd in (HERD_A, HERD_B)}
+    herds = {herd: within_herd(df, herd, seeds) for herd, df in rows.items()}
+    a, b = rows[HERD_A], rows[HERD_B]
     transfers = [transfer(a, b, herds[HERD_B]), transfer(b, a, herds[HERD_A])]
 
     h1_p = {f"{h}: {k}": v.wilcoxon_p for h, r in herds.items() for k, v in r.h1.items()}

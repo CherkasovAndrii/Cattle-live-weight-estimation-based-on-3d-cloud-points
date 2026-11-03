@@ -1,11 +1,10 @@
 // The farm at a glance: what happened in the last two weeks, how many
 // estimates can be trusted, whether the herd is calibrated and drifting.
 import { Link } from "react-router-dom";
-import { api } from "../api/client";
 import type { HerdStatus, Scan } from "../api/types";
 import { AgreementPlot, ScansPerDay } from "../components/charts";
 import { Card, ErrorBox, Loading, Pill, Stat } from "../components/ui";
-import { useApp, useLoad } from "../lib/state";
+import { useApp, useHerdSummary } from "../lib/state";
 import { fmt, plural, when } from "../lib/text";
 
 export function driftText(st: HerdStatus): { text: string; tone: "ok" | "warn" | "bad" } {
@@ -19,11 +18,7 @@ export function driftText(st: HerdStatus): { text: string; tone: "ok" | "warn" |
 export function Overview() {
   const { herdId, herds } = useApp();
   const herd = herds.find((h) => h.id === herdId);
-  const { data, error, loading } = useLoad(async () => {
-    if (herdId == null) return null;
-    const [status, scans] = await Promise.all([api.herdStatus(herdId), api.scans(herdId, 500)]);
-    return { status, scans };
-  }, [herdId]);
+  const { data, error, loading } = useHerdSummary();
 
   if (herdId == null || (loading && !data)) return <Loading />;
   if (!data) return <ErrorBox text={error} />;

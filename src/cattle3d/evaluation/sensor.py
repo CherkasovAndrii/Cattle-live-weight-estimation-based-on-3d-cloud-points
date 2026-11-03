@@ -26,13 +26,13 @@ from __future__ import annotations
 
 import zlib
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import KFold
 
+from cattle3d.evaluation.experiments import draw_reference
 from cattle3d.evaluation.stats import Interval, bootstrap_ci
 from cattle3d.geometry.quality import (
     MAX_EDGE_DENSITY,
@@ -43,10 +43,10 @@ from cattle3d.geometry.quality import (
     quality_reasons,
     view_quality,
 )
-from cattle3d.geometry.segment import _EXPECTED_UP, SegmentationConfig, SegmentationError, fit_floor
+from cattle3d.geometry.segment import SegmentationConfig, SegmentationError, fit_view_floor
 from cattle3d.io.ply import read_organized_cloud
 from cattle3d.modeling.calibration import fit_correction
-from cattle3d.pipeline import analyse_clouds, features_from_clouds
+from cattle3d.pipeline import analyse_clouds, feature_row, features_from_clouds, map_in_processes, read_views
 from cattle3d.types import AnimalRecord, OrganizedCloud, View
 
 KINDS = ("noise", "scale", "dropout")
@@ -117,23 +117,17 @@ def perturb_views(
 
 def _degraded_row(job: tuple[AnimalRecord, Perturbation, int]) -> dict[str, object]:
     record, p, seed = job
-    row: dict[str, object] = {"herd": record.herd, "animal_id": record.animal_id, "weight_kg": record.weight_kg}
-    try:
-        clouds = {view: read_organized_cloud(path) for view, path in record.view_paths.items()}
-        row.update(features_from_clouds(perturb_views(clouds, p, record.key, seed)))
-        row["error"] = ""
-    except Exception as exc:  # a degraded view that cannot be segmented is a result, not a crash
-        row["error"] = f"{type(exc).__name__}: {exc}"
-    return row
+    # A degraded view that cannot be segmented is a result (its error text), not a crash.
+    return feature_row(
+        record, lambda r: features_from_clouds(perturb_views(read_views(r.view_paths), p, r.key, seed)), manual=False
+    )
 
 
 def extract_degraded(
     records: tuple[AnimalRecord, ...], p: Perturbation, seed: int = 0, workers: int = 4
 ) -> pd.DataFrame:
     """Feature table of a herd recorded with a degraded camera, one row per animal."""
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        rows = list(pool.map(_degraded_row, [(r, p, seed) for r in records], chunksize=2))
-    return pd.DataFrame(rows)
+    return pd.DataFrame(map_in_processes(_degraded_row, [(r, p, seed) for r in records], workers))
 
 
 # ---- the real noise of the recordings ------------------------------------------------
@@ -141,9 +135,7 @@ def recorded_quality(
     cloud: OrganizedCloud, view: View, config: SegmentationConfig = SegmentationConfig()
 ) -> tuple[FloorNoise, float]:
     """Floor noise and edge density of one recorded view (see ``geometry.quality``)."""
-    rng_m = np.linalg.norm(cloud.xyz, axis=2)
-    usable = cloud.valid & (rng_m > config.min_range_m) & (rng_m < config.max_range_m)
-    plane, _ = fit_floor(cloud.xyz[usable], _EXPECTED_UP[view], config)
+    plane, _ = fit_view_floor(cloud, cloud.in_range(config.min_range_m, config.max_range_m), view, config)
     noise = floor_noise(cloud, plane, config.floor_inlier_m, config.min_range_m, config.max_range_m)
     if noise is None:
         raise SegmentationError("too few floor pixels to measure noise")
@@ -193,11 +185,9 @@ def recalibrated_mae(pred: np.ndarray, y: np.ndarray, draws: int = 200, k: int =
     """Mean MAE on the other animals after fitting slope and intercept on k
     random reference animals, as a farm does with its first scale weighings."""
     rng = np.random.default_rng(seed)
-    n = y.size
     maes = []
     for _ in range(draws):
-        ref = rng.choice(n, k, replace=False)
-        rest = np.setdiff1d(np.arange(n), ref)
+        ref, rest = draw_reference(rng, y.size, k)
         c = fit_correction(pred[ref], y[ref])
         maes.append(float(np.mean(np.abs(c.slope * pred[rest] + c.intercept_kg - y[rest]))))
     return float(np.mean(maes))
@@ -292,7 +282,7 @@ QUALITY_LEVELS = (Perturbation("noise", 0.0), Perturbation("noise", 0.005), Pert
 
 
 def _quality_rows(record: AnimalRecord) -> list[dict[str, object]]:
-    clouds = {view: read_organized_cloud(path) for view, path in record.view_paths.items()}
+    clouds = read_views(record.view_paths)
     rows = []
     for p in QUALITY_LEVELS:
         degraded = perturb_views(clouds, p, record.key)
@@ -310,8 +300,7 @@ def _quality_rows(record: AnimalRecord) -> list[dict[str, object]]:
 def quality_check_frame(records: tuple[AnimalRecord, ...], workers: int = 4) -> pd.DataFrame:
     """What the per-scan recording check (``geometry.quality``) says on clean
     and degraded clouds of every animal."""
-    with ProcessPoolExecutor(max_workers=workers) as pool:
-        return pd.DataFrame([row for rows in pool.map(_quality_rows, records, chunksize=2) for row in rows])
+    return pd.DataFrame([row for rows in map_in_processes(_quality_rows, records, workers) for row in rows])
 
 
 def _pct(x: float, digits: int = 1) -> str:

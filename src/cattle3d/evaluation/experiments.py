@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-import pandas as pd
 from joblib import Parallel, delayed
 from sklearn.model_selection import KFold
 
@@ -52,6 +51,13 @@ def fit_predict(
     return factory(seed).fit(X_train, y_train).predict(X_test)
 
 
+def draw_reference(rng: np.random.Generator, n: int, k: int) -> tuple[np.ndarray, np.ndarray]:
+    """``k`` random animals of ``n`` as the reference (calibration) set, and the
+    rest, sorted, to score on."""
+    ref = rng.choice(n, k, replace=False)
+    return ref, np.setdiff1d(np.arange(n), ref)
+
+
 @dataclass(frozen=True)
 class RecalibrationPoint:
     k: int
@@ -86,8 +92,7 @@ def recalibration_curve(
         for k in ks:
             maes, mapes, biases = [], [], []
             for _ in range(repetitions):
-                ref = rng.choice(n, k, replace=False)
-                rest = np.setdiff1d(np.arange(n), ref)
+                ref, rest = draw_reference(rng, n, k)
                 if mode == "intercept":
                     corrected = zero_shot_pred[rest] + (y_target[ref] - zero_shot_pred[ref]).mean()
                 else:
@@ -129,18 +134,9 @@ def conformal_coverage(
     abs_res = np.abs(pred - y)
     covs, widths = [], []
     for _ in range(repetitions):
-        cal = rng.choice(y.size, calib_size, replace=False)
-        rest = np.setdiff1d(np.arange(y.size), cal)
+        cal, rest = draw_reference(rng, y.size, calib_size)
         q = conformal_quantile(abs_res[cal], alpha)
         covs.append((abs_res[rest] <= q).mean())
         widths.append(q)
     lo, hi = np.percentile(covs, [2.5, 97.5])
     return float(np.mean(covs)), float(lo), float(hi), float(np.mean(widths))
-
-
-def frame(df: pd.DataFrame, columns: tuple[str, ...]) -> tuple[np.ndarray, np.ndarray]:
-    sub = df.dropna(subset=list(columns) + ["weight_kg"])
-    if len(sub) != len(df):
-        raise ValueError(f"{len(df) - len(sub)} animals have missing values in {columns}")
-    return sub[list(columns)].to_numpy(float), sub["weight_kg"].to_numpy(float)
-

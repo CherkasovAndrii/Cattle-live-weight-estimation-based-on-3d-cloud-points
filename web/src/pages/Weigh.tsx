@@ -8,7 +8,7 @@ import { VIEWS, type DemoSample, type ScanResult, type View } from "../api/types
 import { CloudViewer, cloudFromPreview } from "../components/CloudViewer";
 import { Card, ErrorBox, KeyValues, Pill } from "../components/ui";
 import { useApp } from "../lib/state";
-import { errorUk, fmt, mb, reasonUk, VIEW_UK } from "../lib/text";
+import { errorUk, fmt, mb, parseKg, reasonUk, VIEW_UK } from "../lib/text";
 
 type Picked = Partial<Record<View, { blob: Blob; label: string }>>;
 
@@ -103,7 +103,7 @@ export function Weigh() {
     setError(null); setBusy(true); setStep(-1);
     const form = new FormData();
     form.append("animal_tag", tag.trim());
-    const kg = parseFloat(scale.replace(",", "."));
+    const kg = parseKg(scale);
     if (kg > 0) form.append("scale_weight_kg", String(kg));
     form.append("preview", "true");
     if (sample?.rig) form.append("rig", JSON.stringify(sample.rig));

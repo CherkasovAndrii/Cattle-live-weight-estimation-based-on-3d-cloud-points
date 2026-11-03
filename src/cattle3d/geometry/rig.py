@@ -18,7 +18,7 @@ import numpy as np
 from scipy.spatial import cKDTree
 
 from cattle3d.geometry.segment import SegmentationTrace, body_axes
-from cattle3d.types import OrganizedCloud, View
+from cattle3d.types import ALL_VIEWS, OrganizedCloud, View
 
 SIDE_VIEWS = (View.LEFT, View.RIGHT)
 MAX_REFINE_M = 0.4  # larger corrections mean the calibration is wrong, not slightly off
@@ -187,7 +187,7 @@ def merge_views(
     occupied = {(int(i) + di, int(j) + dj) for i, j in set(map(tuple, cells)) for di in (-1, 0, 1) for dj in (-1, 0, 1)}
     top_back = _back_line(top)
     parts, ids, shifts, shares, gaps = [], [], [], [], []
-    for i, view in enumerate((View.LEFT, View.RIGHT, View.TOP)):
+    for i, view in enumerate(ALL_VIEWS):
         if view is View.TOP:
             p = top
         else:

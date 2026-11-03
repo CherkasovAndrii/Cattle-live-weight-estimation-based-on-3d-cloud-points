@@ -54,7 +54,7 @@ class SegmentationConfig:
 # Expected floor normal in camera coordinates, up to sign. Side cameras are
 # mounted level, so the image vertical (camera y) is gravity; the top camera
 # looks down its optical axis (camera z).
-_EXPECTED_UP = {
+EXPECTED_UP = {
     View.LEFT: np.array([0.0, 1.0, 0.0]),
     View.RIGHT: np.array([0.0, 1.0, 0.0]),
     View.TOP: np.array([0.0, 0.0, 1.0]),
@@ -108,6 +108,13 @@ def fit_floor(
         normal, d = -normal, -d
     inliers = np.abs(points @ normal + d) < config.floor_inlier_m
     return Plane(normal=normal, d=d), float(inliers.mean())
+
+
+def fit_view_floor(
+    cloud: OrganizedCloud, usable: np.ndarray, view: View, config: SegmentationConfig
+) -> tuple[Plane, float]:
+    """``fit_floor`` on the ``usable`` pixels of one view, with that camera's "up"."""
+    return fit_floor(cloud.xyz[usable], EXPECTED_UP[view], config)
 
 
 def _grid_components(mask: np.ndarray, depth: np.ndarray, jump: float) -> np.ndarray:
@@ -226,12 +233,11 @@ def trace_view(
     cloud: OrganizedCloud, view: View, config: SegmentationConfig = SegmentationConfig()
 ) -> SegmentationTrace:
     xyz = cloud.xyz
-    rng_m = np.linalg.norm(xyz, axis=2)
-    valid = cloud.valid & (rng_m > config.min_range_m) & (rng_m < config.max_range_m)
+    valid = cloud.in_range(config.min_range_m, config.max_range_m)
     if valid.sum() < config.min_component_pixels:
         raise SegmentationError(f"{view.value}: too few depth returns in range")
 
-    floor, inlier_ratio = fit_floor(xyz[valid], _EXPECTED_UP[view], config)
+    floor, inlier_ratio = fit_view_floor(cloud, valid, view, config)
     height = np.zeros(valid.shape)
     height[valid] = floor.signed_distance(xyz[valid])
     above = valid & (height > config.min_height_m) & (height < config.max_height_m)
