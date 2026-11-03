@@ -115,13 +115,16 @@ class MeanEnsemble(BaseEstimator, RegressorMixin):
         return np.mean([m.predict(X) for m in self.members_], axis=0)
 
 
+def physics_on(feature_names: tuple[str, ...]) -> ColumnSubset:
+    """The physics model reading its one feature out of a wider feature matrix."""
+    return ColumnSubset(physics_model(), (feature_names.index(PHYSICS_FEATURE),))
+
+
 def ensemble_model(feature_names: tuple[str, ...], seed: int = 0) -> MeanEnsemble:
     """Physics + robust linear + LightGBM, the deployable model."""
-    physics_col = (feature_names.index(PHYSICS_FEATURE),)
-    return MeanEnsemble(
-        (
-            ColumnSubset(physics_model(), physics_col),
-            robust_linear_model(),
-            lgbm_model(seed),
-        )
-    )
+    return MeanEnsemble((physics_on(feature_names), robust_linear_model(), lgbm_model(seed)))
+
+
+def deployable_model(seed: int = 0) -> MeanEnsemble:
+    """The deployable ensemble on ``VOLUME_FEATURES``, as a ``ModelFactory``."""
+    return ensemble_model(VOLUME_FEATURES, seed)

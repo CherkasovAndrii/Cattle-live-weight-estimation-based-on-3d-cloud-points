@@ -224,7 +224,7 @@ src/cattle3d/
   audit.py                 CowDatabase join audit (heights only)
   geometry/segment.py      floor RANSAC, segmentation, body frame
   features/geometry_features.py   volumes, areas, heights
-  pipeline.py              clouds -> feature row (shared by CLI, API, experiments)
+  pipeline.py              clouds -> feature row and feature table (shared by CLI, API, experiments)
   modeling/models.py       physics, robust linear, LightGBM, ensemble
   modeling/weight_model.py deployable artifact: interval, range check, herd calibration
   modeling/calibration.py  herd correction, its interval, drift check
@@ -233,6 +233,7 @@ src/cattle3d/
   geometry/rig.py          station calibration and merging the three views for display
   geometry/quality.py      per-scan recording check: floor noise and scattered missing pixels
   demo.py                  defence demo: held-out cows, demo model, seeded demo farms
+  network.py               how a phone reaches the demo: LAN addresses, Cloudflare quick tunnel
   web/static/              built web console served at / (do not edit; built from web/)
   evaluation/              metrics and bootstrap, CV and transfer, study, report, sensor-error study
   figures/                 thesis schemes and figures (uk/en) drawn from the code itself

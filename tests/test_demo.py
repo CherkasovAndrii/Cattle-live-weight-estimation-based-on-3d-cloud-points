@@ -136,7 +136,7 @@ def test_demo_qr_code_points_phones_at_the_app(demo_client):
 def test_phone_address_prefers_home_wifi_over_virtual_and_vpn_adapters(monkeypatch):
     import socket
 
-    from cattle3d import demo as D
+    from cattle3d import network as D
 
     class Sock:
         def __init__(self, *a): pass

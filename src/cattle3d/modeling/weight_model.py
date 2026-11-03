@@ -19,13 +19,8 @@ import pandas as pd
 from cattle3d import __version__
 from cattle3d.evaluation.experiments import conformal_quantile, oof_predictions
 from cattle3d.evaluation.stats import metrics
-from cattle3d.modeling.calibration import (
-    MIN_CALIBRATION_ANIMALS,
-    SLOPE_CALIBRATION_ANIMALS,
-    HerdCorrection,
-    fit_correction,
-)
-from cattle3d.modeling.models import PHYSICS_FEATURE, VOLUME_FEATURES, ensemble_model
+from cattle3d.modeling.calibration import HerdCorrection, fit_correction
+from cattle3d.modeling.models import PHYSICS_FEATURE, VOLUME_FEATURES, deployable_model
 from cattle3d.types import Prediction
 
 # Quality gates: below these the segmentation is too thin to trust.
@@ -33,9 +28,6 @@ MIN_POINTS = {"left_n_points": 3_000, "right_n_points": 3_000, "top_n_points": 8
 # Animals whose trunk volume lies outside the training range by more than
 # this fraction of the range are flagged; out-of-range error is mostly bias.
 RANGE_TOLERANCE = 0.05
-
-__all__ = ["MIN_CALIBRATION_ANIMALS", "SLOPE_CALIBRATION_ANIMALS", "ModelInputError", "WeightModel"]
-
 
 class ModelInputError(ValueError):
     """The feature row is missing required features."""
@@ -64,12 +56,12 @@ class WeightModel:
         features = VOLUME_FEATURES
         X = table[list(features)].to_numpy(float)
         y = table["weight_kg"].to_numpy(float)
-        oof = oof_predictions(lambda s: ensemble_model(features, s), X, y, seeds=(seed,))[0]
+        oof = oof_predictions(deployable_model, X, y, seeds=(seed,))[0]
         volume = table[PHYSICS_FEATURE].to_numpy(float)
         q75, q25 = np.percentile(volume, [75, 25])
         return cls(
             features=features,
-            estimator=ensemble_model(features, seed).fit(X, y),
+            estimator=deployable_model(seed).fit(X, y),
             interval_half_width_kg=conformal_quantile(np.abs(oof - y), alpha),
             alpha=alpha,
             volume_range=(float(volume.min()), float(volume.max())),
@@ -89,12 +81,9 @@ class WeightModel:
         ``rows`` needs the model features and ``weight_kg``. With 10 or more
         animals both slope and intercept are refitted (transfer between herds
         changes both); with fewer, only the intercept, because a slope from a
-        handful of animals is noise. Returns (slope, intercept).
+        handful of animals is noise. Returns (slope, intercept). Raises
+        ValueError below ``MIN_CALIBRATION_ANIMALS`` (see ``fit_correction``).
         """
-        if len(rows) < MIN_CALIBRATION_ANIMALS:
-            raise ValueError(
-                f"at least {MIN_CALIBRATION_ANIMALS} reference weighings are needed to calibrate a herd"
-            )
         c = fit_correction(self.raw_predict(rows), rows["weight_kg"].to_numpy(float))
         self.herd_corrections[herd] = (c.slope, c.intercept_kg)
         return self.herd_corrections[herd]

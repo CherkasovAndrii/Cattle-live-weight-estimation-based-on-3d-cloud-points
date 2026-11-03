@@ -139,6 +139,12 @@ class Store:
         finally:
             db.close()
 
+    def _scans(self, where: str, params: tuple[object, ...]) -> list[Scan]:
+        """Scans matching an SQL condition (with ORDER BY / LIMIT if needed)."""
+        with self._connect() as db:
+            rows = db.execute(f"SELECT {_SCAN_COLUMNS} FROM scans WHERE {where}", params).fetchall()
+        return [_scan(r) for r in rows]
+
     # ---- herds ---------------------------------------------------------------
     def add_herd(self, name: str) -> Herd:
         created = now_utc()
@@ -197,9 +203,8 @@ class Store:
         return found
 
     def scan(self, scan_id: int) -> Scan | None:
-        with self._connect() as db:
-            row = db.execute(f"SELECT {_SCAN_COLUMNS} FROM scans WHERE id = ?", (scan_id,)).fetchone()
-        return _scan(row) if row else None
+        found = self._scans("id = ?", (scan_id,))
+        return found[0] if found else None
 
     def set_scale_weight(self, scan_id: int, weight_kg: float) -> Scan | None:
         with self._connect() as db:
@@ -210,41 +215,26 @@ class Store:
         return self.scan(scan_id)
 
     def animal_scans(self, herd_id: int, animal_tag: str) -> list[Scan]:
-        with self._connect() as db:
-            rows = db.execute(
-                f"SELECT {_SCAN_COLUMNS} FROM scans WHERE herd_id = ? AND animal_tag = ? ORDER BY id",
-                (herd_id, animal_tag),
-            ).fetchall()
-        return [_scan(r) for r in rows]
+        return self._scans("herd_id = ? AND animal_tag = ? ORDER BY id", (herd_id, animal_tag))
 
     def herd_scans(self, herd_id: int, limit: int = 50) -> list[Scan]:
         """The herd's most recent scans, newest first."""
-        with self._connect() as db:
-            rows = db.execute(
-                f"SELECT {_SCAN_COLUMNS} FROM scans WHERE herd_id = ? ORDER BY id DESC LIMIT ?", (herd_id, limit)
-            ).fetchall()
-        return [_scan(r) for r in rows]
+        return self._scans("herd_id = ? ORDER BY id DESC LIMIT ?", (herd_id, limit))
 
     def reference_weighings(self, herd_id: int) -> list[Scan]:
         """The latest weighed, usable scan of each animal in the herd."""
-        with self._connect() as db:
-            rows = db.execute(
-                f"SELECT {_SCAN_COLUMNS} FROM scans WHERE id IN ("
-                " SELECT MAX(id) FROM scans WHERE herd_id = ? AND scale_weight_kg IS NOT NULL"
-                " AND raw_weight_kg IS NOT NULL GROUP BY animal_tag) ORDER BY id",
-                (herd_id,),
-            ).fetchall()
-        return [_scan(r) for r in rows]
+        return self._scans(
+            "id IN (SELECT MAX(id) FROM scans WHERE herd_id = ? AND scale_weight_kg IS NOT NULL"
+            " AND raw_weight_kg IS NOT NULL GROUP BY animal_tag) ORDER BY id",
+            (herd_id,),
+        )
 
     def spot_weighings(self, calibration_id: int) -> list[Scan]:
         """Weighed scans predicted under a calibration, in weighing order."""
-        with self._connect() as db:
-            rows = db.execute(
-                f"SELECT {_SCAN_COLUMNS} FROM scans WHERE calibration_id = ? AND scale_weight_kg IS NOT NULL"
-                " AND weight_kg IS NOT NULL ORDER BY weighed_utc, id",
-                (calibration_id,),
-            ).fetchall()
-        return [_scan(r) for r in rows]
+        return self._scans(
+            "calibration_id = ? AND scale_weight_kg IS NOT NULL AND weight_kg IS NOT NULL ORDER BY weighed_utc, id",
+            (calibration_id,),
+        )
 
     def count_scans(self, herd_id: int) -> dict[str, int]:
         with self._connect() as db:

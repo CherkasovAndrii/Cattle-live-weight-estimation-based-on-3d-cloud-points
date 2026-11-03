@@ -22,10 +22,23 @@ N_PROFILE = 10  # slices of the back profile, shoulder to rump
 _MIN_PROFILE_POINTS = 30
 
 
-def _slices(along: np.ndarray, n: int = N_SLICES) -> tuple[np.ndarray, float]:
+def body_slices(along: np.ndarray, n: int = N_SLICES) -> tuple[np.ndarray, float, np.ndarray]:
+    """Slice edges, slice length and the slice index of every point (n equal
+    slices between the robust ends; points beyond them get -1 or n)."""
     lo, hi = np.percentile(along, [_LO, _HI])
     edges = np.linspace(lo, hi, n + 1)
-    return edges, float((hi - lo) / n)
+    return edges, float((hi - lo) / n), np.digitize(along, edges) - 1
+
+
+def _spread(values: np.ndarray, lo: float = _LO, hi: float = _HI) -> float:
+    """Robust extent: the ``hi`` minus the ``lo`` percentile."""
+    return float(np.subtract(*np.percentile(values, [hi, lo])))
+
+
+def with_floor_projection(section: np.ndarray) -> np.ndarray:
+    """A slice's (lateral, height) points plus their projections on the floor,
+    so the convex hull covers the area under the body line."""
+    return np.vstack([section, np.column_stack([section[:, 0], np.zeros(section.shape[0])])])
 
 
 def _hull_area(points_2d: np.ndarray) -> float:
@@ -45,29 +58,25 @@ def cross_section_volume(body: np.ndarray, n_slices: int = N_SLICES) -> float:
     top view gives the area under the back profile. Convex hulls span holes in
     the depth data, which makes the estimate tolerant of missing pixels.
     """
-    edges, step = _slices(body[:, 0], n_slices)
-    which = np.digitize(body[:, 0], edges) - 1
+    _, step, which = body_slices(body[:, 0], n_slices)
     total = 0.0
     for k in range(n_slices):
         section = body[which == k][:, 1:3]
         if section.shape[0] < 3:
             continue
-        floor = np.column_stack([section[:, 0], np.zeros(section.shape[0])])
-        total += _hull_area(np.vstack([section, floor])) * step
+        total += _hull_area(with_floor_projection(section)) * step
     return total
 
 
 def profile_area(body: np.ndarray, value_axis: int, n_slices: int = N_SLICES) -> float:
     """Area swept by the robust extent of one axis along the body axis."""
-    edges, step = _slices(body[:, 0], n_slices)
-    which = np.digitize(body[:, 0], edges) - 1
+    _, step, which = body_slices(body[:, 0], n_slices)
     total = 0.0
     for k in range(n_slices):
         values = body[which == k, value_axis]
         if values.size < 5:
             continue
-        lo, hi = np.percentile(values, [1, 99])
-        total += (hi - lo) * step
+        total += _spread(values, 1, 99) * step
     return total
 
 
@@ -82,7 +91,7 @@ def width_profile(body: np.ndarray, n_slices: int = N_SLICES) -> tuple[np.ndarra
     for k in range(n_slices):
         lateral = body[which == k, 1]
         if lateral.size >= 10:
-            widths[k] = np.subtract(*np.percentile(lateral, [95, 5]))
+            widths[k] = _spread(lateral, 5, 95)
     return edges, np.convolve(widths, np.ones(3) / 3, mode="same")
 
 
@@ -126,7 +135,7 @@ def trunk_profile(body: np.ndarray, lo: float, hi: float, n: int = N_PROFILE) ->
         if part.shape[0] < _MIN_PROFILE_POINTS:
             raise ValueError(f"top: back-profile slice {k} has only {part.shape[0]} points")
         out[f"profile_area_{k}"] = cross_section_volume(part, n_slices=4) / max(float(np.ptp(part[:, 0])), 1e-6)
-        out[f"profile_width_{k}"] = float(np.subtract(*np.percentile(part[:, 1], [_HI, _LO])))
+        out[f"profile_width_{k}"] = _spread(part[:, 1])
         out[f"profile_height_{k}"] = float(np.percentile(part[:, 2], 95))
     return out
 
@@ -143,8 +152,8 @@ def view_features(seg: SegmentedView) -> dict[str, float]:
     along, lateral, height = body[:, 0], body[:, 1], body[:, 2]
     feats = {
         "n_points": float(body.shape[0]),
-        "length": float(np.subtract(*np.percentile(along, [_HI, _LO]))),
-        "width": float(np.subtract(*np.percentile(lateral, [_HI, _LO]))),
+        "length": _spread(along),
+        "width": _spread(lateral),
         "height": float(np.percentile(height, _HI)),
         "floor_inlier_ratio": seg.floor_inlier_ratio,
         "n_components": float(seg.n_components),
@@ -158,14 +167,14 @@ def view_features(seg: SegmentedView) -> dict[str, float]:
         feats["trunk_length"] = hi - lo
         feats["trunk_cs_volume"] = cross_section_volume(trunk)
         feats["trunk_footprint_area"] = profile_area(trunk, value_axis=1)
-        feats["trunk_width"] = float(np.subtract(*np.percentile(trunk[:, 1], [_HI, _LO])))
+        feats["trunk_width"] = _spread(trunk[:, 1])
         feats["trunk_height"] = float(np.percentile(trunk[:, 2], 90))
         # The central 60 % of the trunk stays in frame even when the camera
         # cuts off the rump or the head, so it is the most robust size signal.
         a, b = lo + MID_TRUNK[0] * (hi - lo), lo + MID_TRUNK[1] * (hi - lo)
         mid = trunk[(trunk[:, 0] >= a) & (trunk[:, 0] <= b)]
         feats["mid_cs_area"] = cross_section_volume(mid) / max(b - a, 1e-6)
-        feats["mid_width"] = float(np.subtract(*np.percentile(mid[:, 1], [_HI, _LO])))
+        feats["mid_width"] = _spread(mid[:, 1])
         feats["mid_height"] = float(np.percentile(mid[:, 2], 95))
         feats.update(trunk_profile(body, lo, hi))
     else:

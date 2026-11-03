@@ -2,7 +2,8 @@
 // and the demo information when the server runs `cattle3d demo`.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { api } from "../api/client";
-import type { DemoInfo, Herd } from "../api/types";
+import type { DemoInfo, Herd, HerdStatus, Scan } from "../api/types";
+import { store, stored } from "./storage";
 import { errorUk } from "./text";
 
 const HERD_STORE = "cattle3d-herd";
@@ -31,7 +32,8 @@ export function useApp(): AppState {
 }
 
 function remembered(): number | null {
-  try { const v = localStorage.getItem(HERD_STORE); return v ? Number(v) : null; } catch { return null; }
+  const v = stored(HERD_STORE);
+  return v ? Number(v) : null;
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -44,7 +46,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setHerdId = useCallback((id: number) => {
     setHerd(id);
-    try { localStorage.setItem(HERD_STORE, String(id)); } catch { /* storage blocked */ }
+    store(HERD_STORE, String(id));
   }, []);
 
   const reloadHerds = useCallback(async () => {
@@ -98,4 +100,14 @@ export function useLoad<T>(load: () => Promise<T>, deps: unknown[]): { data: T |
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, revision, tick]);
   return { data, error, loading, reload: () => setTick((t) => t + 1) };
+}
+
+/** The farm in use: its status and its latest scans, for the overview and farm pages. */
+export function useHerdSummary() {
+  const { herdId } = useApp();
+  return useLoad(async (): Promise<{ status: HerdStatus; scans: Scan[] } | null> => {
+    if (herdId == null) return null;
+    const [status, scans] = await Promise.all([api.herdStatus(herdId), api.scans(herdId, 500)]);
+    return { status, scans };
+  }, [herdId]);
 }

@@ -10,6 +10,8 @@ export function fmt(x: number | null | undefined, digits = 0): string {
   if (x == null || Number.isNaN(x)) return "—";
   return Number(x).toLocaleString("uk-UA", { maximumFractionDigits: digits, minimumFractionDigits: digits });
 }
+/** A weight typed by the operator; a decimal comma is accepted. NaN when it is not a number. */
+export const parseKg = (text: string) => parseFloat(text.replace(",", "."));
 export const mb = (bytes: number) => `${fmt(bytes / 1048576, 1)} МБ`;
 export const when = (iso: string) =>
   new Date(iso).toLocaleString("uk-UA", { dateStyle: "short", timeStyle: "short" });

@@ -13,12 +13,9 @@ from cattle3d.evaluation.study import H3B_MARGIN_MAPE, RECAL_KS
 from cattle3d.features.geometry_features import N_PROFILE, N_SLICES
 from cattle3d.figures.draw import Canvas, Lang
 from cattle3d.geometry.segment import SegmentationConfig
+from cattle3d.modeling.calibration import SLOPE_CALIBRATION_ANIMALS
 from cattle3d.modeling.models import VOLUME_FEATURES
-from cattle3d.modeling.weight_model import (
-    MIN_POINTS,
-    RANGE_TOLERANCE,
-    SLOPE_CALIBRATION_ANIMALS,
-)
+from cattle3d.modeling.weight_model import MIN_POINTS, RANGE_TOLERANCE
 
 CFG = SegmentationConfig()
 

@@ -16,6 +16,7 @@ from cattle3d.evaluation.stats import metrics
 from cattle3d.evaluation.study import (
     ENSEMBLE,
     H3B_MARGIN_MAPE,
+    LINEAR,
     MANUAL,
     PHYSICS,
     StudyResult,
@@ -34,7 +35,7 @@ from cattle3d.figures.style import (
 MODEL_NAMES = {
     ENSEMBLE: ("3-D ансамбль", "3-D ensemble"),
     PHYSICS: ("фізична a·V + b", "physics a·V + b"),
-    "3-D robust linear": ("3-D робастна лінійна", "3-D robust linear"),
+    LINEAR: ("3-D робастна лінійна", "3-D robust linear"),
     MANUAL: ("заміри рулеткою", "tape measurements"),
 }
 

@@ -17,13 +17,12 @@ import zlib
 import numpy as np
 from scipy.spatial import ConvexHull, QhullError
 
-from cattle3d.features.geometry_features import N_SLICES, trunk_interval
+from cattle3d.features.geometry_features import N_SLICES, body_slices, trunk_interval, with_floor_projection
 from cattle3d.geometry.rig import MergedViews
 from cattle3d.geometry.segment import SegmentationTrace
-from cattle3d.types import View
+from cattle3d.types import ALL_VIEWS, View
 
 MAX_POINTS = 24_000
-VIEW_ORDER = (View.LEFT, View.RIGHT, View.TOP)
 THUMB_STEP = 2  # 512×424 Kinect frame -> 256×212 thumbnail
 
 
@@ -57,7 +56,7 @@ def depth_thumbnail(trace: SegmentationTrace) -> str:
 def _hull(section: np.ndarray) -> list[list[float]]:
     """Convex outline of one slice in the (lateral, height) plane, with the
     floor projections the volume feature adds, as [y, z] pairs in metres."""
-    pts = np.vstack([section, np.column_stack([section[:, 0], np.zeros(len(section))])])
+    pts = with_floor_projection(section)
     try:
         hull = ConvexHull(pts)
     except QhullError:
@@ -76,7 +75,7 @@ def scan_preview(
     if merged is not None:
         pts, view_of = merged.points, merged.view_index
     else:
-        pts, view_of = top, np.full(len(top), VIEW_ORDER.index(View.TOP), np.uint8)
+        pts, view_of = top, np.full(len(top), ALL_VIEWS.index(View.TOP), np.uint8)
     pts = pts.copy()
     pts[:, 0] -= centre
     if len(pts) > MAX_POINTS:
@@ -85,8 +84,7 @@ def scan_preview(
     mm = np.clip(np.round(pts * 1000), -32768, 32767).astype("<i2")
 
     trunk = top[(top[:, 0] >= lo) & (top[:, 0] <= hi)]
-    edges = np.linspace(*np.percentile(trunk[:, 0], [2, 98]), N_SLICES + 1)
-    which = np.digitize(trunk[:, 0], edges) - 1
+    edges, _, which = body_slices(trunk[:, 0])
     slices = []
     for k in range(N_SLICES):
         section = trunk[which == k][:, 1:3]
@@ -101,7 +99,7 @@ def scan_preview(
         },
         "points_mm": base64.b64encode(mm.tobytes()).decode(),
         "point_view": base64.b64encode(view_of.astype(np.uint8).tobytes()).decode(),
-        "view_order": [v.value for v in VIEW_ORDER],
+        "view_order": [v.value for v in ALL_VIEWS],
         "n_points": int(len(mm)),
         "views_merged": merged is not None,
         "view_agreement": None if merged is None else {

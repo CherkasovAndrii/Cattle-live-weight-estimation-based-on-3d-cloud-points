@@ -50,6 +50,16 @@ class OrganizedCloud:
     def valid(self) -> np.ndarray:
         return np.isfinite(self.xyz).all(axis=2) & (self.xyz[..., 2] > 0)
 
+    @property
+    def ranges(self) -> np.ndarray:
+        """(H, W) distance of every pixel from the camera, metres."""
+        return np.linalg.norm(self.xyz, axis=2)
+
+    def in_range(self, min_m: float, max_m: float) -> np.ndarray:
+        """(H, W) pixels with a depth return strictly between ``min_m`` and ``max_m``."""
+        ranges = self.ranges
+        return self.valid & (ranges > min_m) & (ranges < max_m)
+
 
 @dataclass(frozen=True)
 class AnimalRecord:

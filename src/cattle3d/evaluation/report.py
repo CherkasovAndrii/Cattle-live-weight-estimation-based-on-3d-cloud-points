@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 from cattle3d.audit import JoinAudit
-from cattle3d.evaluation.stats import metrics
+from cattle3d.evaluation.stats import Interval, PairedComparison, metrics
 from cattle3d.evaluation.study import (
     H3B_MARGIN_MAPE,
     HERD_NAMES,
@@ -31,12 +31,21 @@ def _md_table(rows: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
-def _verdict(comparison) -> str:
+def _ci(interval: Interval, spec: str) -> str:
+    """``estimate [low, high]`` with one format spec for all three numbers."""
+    return f"{interval.estimate:{spec}} [{interval.low:{spec}}, {interval.high:{spec}}]"
+
+
+def _verdict(comparison: PairedComparison, first: str = "first is better", second: str = "second is better") -> str:
     if comparison.a_better:
-        return "first is better"
+        return first
     if comparison.b_better:
-        return "second is better"
+        return second
     return "no claimable difference"
+
+
+def _coverage(c: tuple[float, float, float, float]) -> dict[str, str]:
+    return {"coverage [95% range]": f"{c[0]:.3f} [{c[1]:.3f}, {c[2]:.3f}]", "half-width kg": f"{c[3]:.1f}"}
 
 
 def write_oof_csv(result: StudyResult, path: Path) -> None:
@@ -69,7 +78,7 @@ def results_markdown(result: StudyResult) -> str:
             rows.append(
                 {
                     "model": name,
-                    "MAE kg [95% CI]": f"{r.mae_ci[name].estimate:.1f} [{r.mae_ci[name].low:.1f}, {r.mae_ci[name].high:.1f}]",
+                    "MAE kg [95% CI]": _ci(r.mae_ci[name], ".1f"),
                     "seed SD": f"{r.seed_mae_sd[name]:.2f}",
                     "MAPE %": f"{m.mape:.2f}",
                     "RMSE": f"{m.rmse:.1f}",
@@ -102,7 +111,7 @@ def results_markdown(result: StudyResult) -> str:
                 {
                     "herd": HERD_NAMES[herd],
                     "comparison": name,
-                    "ΔMAE kg [95% CI]": f"{c.mae_difference.estimate:+.2f} [{c.mae_difference.low:+.2f}, {c.mae_difference.high:+.2f}]",
+                    "ΔMAE kg [95% CI]": _ci(c.mae_difference, "+.2f"),
                     "Wilcoxon p": f"{c.wilcoxon_p:.4f}",
                     "Holm p": f"{result.h1_holm[key]:.4f}",
                     "verdict": _verdict(c),
@@ -121,13 +130,12 @@ def results_markdown(result: StudyResult) -> str:
         yt = result.herds[t.target].weight_kg
         for name, pred in t.zero_shot.items():
             m = metrics(yt, pred)
-            b = t.bias_ci[name]
             rows.append(
                 {
                     "train → test": f"{t.source} → {t.target}",
                     "model": name,
                     "MAE kg": f"{m.mae:.1f}",
-                    "bias kg [95% CI]": f"{b.estimate:+.1f} [{b.low:+.1f}, {b.high:+.1f}]",
+                    "bias kg [95% CI]": _ci(t.bias_ci[name], "+.1f"),
                     "|bias| / MAE": f"{abs(m.bias) / m.mae:.2f}",
                     "MAPE %": f"{m.mape:.2f}",
                 }
@@ -173,10 +181,10 @@ def results_markdown(result: StudyResult) -> str:
         rows.append(
             {
                 "train → test": f"{t.source} → {t.target}",
-                "ΔMAE kg (ensemble − physics) [95% CI]": f"{c.mae_difference.estimate:+.1f} [{c.mae_difference.low:+.1f}, {c.mae_difference.high:+.1f}]",
+                "ΔMAE kg (ensemble − physics) [95% CI]": _ci(c.mae_difference, "+.1f"),
                 "Wilcoxon p": f"{c.wilcoxon_p:.4g}",
                 "Holm p": f"{result.h3_holm[key]:.4g}",
-                "verdict": "physics better" if c.a_better else ("ensemble better" if c.b_better else "no claimable difference"),
+                "verdict": _verdict(c, "physics better", "ensemble better"),
             }
         )
     out += [_md_table(rows), ""]
@@ -203,13 +211,8 @@ def results_markdown(result: StudyResult) -> str:
         "recalibration (transfer); coverage measured on the remaining animals, 500 draws.",
         "",
     ]
-    rows = []
-    for herd, r in result.herds.items():
-        c = r.conformal
-        rows.append({"setting": f"within {HERD_NAMES[herd]}", "coverage [95% range]": f"{c[0]:.3f} [{c[1]:.3f}, {c[2]:.3f}]", "half-width kg": f"{c[3]:.1f}"})
-    for t in result.transfers:
-        c = t.recalibrated_conformal
-        rows.append({"setting": f"{t.source} → {t.target}, k = 20", "coverage [95% range]": f"{c[0]:.3f} [{c[1]:.3f}, {c[2]:.3f}]", "half-width kg": f"{c[3]:.1f}"})
+    rows = [{"setting": f"within {HERD_NAMES[herd]}", **_coverage(r.conformal)} for herd, r in result.herds.items()]
+    rows += [{"setting": f"{t.source} → {t.target}, k = 20", **_coverage(t.recalibrated_conformal)} for t in result.transfers]
     out += [_md_table(rows), ""]
     return "\n".join(out)
 

@@ -7,8 +7,8 @@ import { api } from "../api/client";
 import type { Scan, ScanStatus } from "../api/types";
 import { Card, ErrorBox, KeyValues, Loading, Pill } from "../components/ui";
 import { PhoneLinks, phoneLinks } from "../components/PhoneLinks";
-import { useApp, useLoad } from "../lib/state";
-import { errorUk, fmt, when } from "../lib/text";
+import { useApp, useHerdSummary } from "../lib/state";
+import { errorUk, fmt, parseKg, when } from "../lib/text";
 import { driftText } from "./Overview";
 
 function WeighingCell({ scan }: { scan: Scan }) {
@@ -18,7 +18,7 @@ function WeighingCell({ scan }: { scan: Scan }) {
   if (scan.scale_weight_kg != null) return <>{fmt(scan.scale_weight_kg)}</>;
   if (scan.status === "refused") return <>—</>;
   const save = async () => {
-    const kg = parseFloat(value.replace(",", "."));
+    const kg = parseKg(value);
     if (!(kg > 0)) return;
     try { await api.recordWeighing(scan.id, kg); changed(); } catch (e) { setErr(errorUk(e)); }
   };
@@ -38,11 +38,7 @@ export function Herd() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [name, setName] = useState("");
-  const { data, error, loading } = useLoad(async () => {
-    if (herdId == null) return null;
-    const [status, scans] = await Promise.all([api.herdStatus(herdId), api.scans(herdId, 500)]);
-    return { status, scans };
-  }, [herdId]);
+  const { data, error, loading } = useHerdSummary();
 
   if (herdId == null || (loading && !data)) return <Loading />;
   if (!data) return <ErrorBox text={error} />;
@@ -56,7 +52,7 @@ export function Herd() {
   const calibrate = async () => {
     setBusy(true); setErr(null); setMsg(null);
     try {
-      const r = (await api.calibrate(herdId)) as { n_reference: number; interval_half_width_kg: number };
+      const r = await api.calibrate(herdId);
       setMsg(`Стадо відкалібровано за ${r.n_reference} тваринами. Нові зважування використовують поправку, інтервал ±${fmt(r.interval_half_width_kg, 1)} кг.`);
       changed();
     } catch (e) { setErr(errorUk(e)); } finally { setBusy(false); }

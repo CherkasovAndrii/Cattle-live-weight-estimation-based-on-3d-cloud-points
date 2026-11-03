@@ -1,9 +1,9 @@
 """A self-contained farm demo on the public herds, for presenting the system.
 
 Owns: choosing demo animals that the demo model never trained on, training
-and caching that model, seeding one calibrated demo farm per herd, and the
-address and QR code a phone on the same network can open. Must not know about
-HTTP routes (the API exposes ``Demo`` read-only).
+and caching that model, seeding one calibrated demo farm per herd, and the QR
+codes of the addresses a phone can open. Must not know about HTTP routes (the
+API exposes ``Demo`` read-only) or find those addresses (``cattle3d.network``).
 
 Honesty rule: the animals offered for live weighing and the 20 reference
 animals of each farm are held out from the demo model, so a demo weighing is a
@@ -12,14 +12,7 @@ genuine out-of-sample prediction, like on a new farm after calibration.
 
 from __future__ import annotations
 
-import atexit
 import json
-import re
-import shutil
-import socket
-import subprocess
-import threading
-import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,10 +22,11 @@ import pandas as pd
 from cattle3d.api.service import WeightService
 from cattle3d.api.store import Store
 from cattle3d.geometry.rig import Rig, median_rig, read_matrices, rig_from_aligned
-from cattle3d.io.datasets import HERD_A, HERD_B, load_cowdatabase, load_cowdatabase2
+from cattle3d.io.datasets import HERD_A, HERD_B, LOADERS
 from cattle3d.io.ply import read_points
 from cattle3d.modeling.calibration import RECOMMENDED_CALIBRATION_ANIMALS
 from cattle3d.modeling.weight_model import WeightModel
+from cattle3d.pipeline import extract_herd, read_feature_table
 from cattle3d.types import AnimalRecord, View
 
 N_SAMPLES = 6
@@ -82,120 +76,6 @@ def demo_model(table: pd.DataFrame, holdout: dict[str, list[str]], path: Path) -
     model.save(path)
     meta.write_text(json.dumps(key))
     return model
-
-
-def _lan_rank(address: str) -> int:
-    """Home and office Wi-Fi almost always hand out 192.168.x.x, then 10.x.x.x.
-    172.16-31.x.x is where WSL, Hyper-V and Docker put their virtual adapters,
-    and anything else (Radmin VPN 26.x, Hamachi 25.x, CGNAT 100.64.x) is a VPN
-    a phone cannot reach. The QR code encodes the best-ranked address."""
-    a, b = (int(x) for x in address.split(".")[:2])
-    if a == 192 and b == 168:
-        return 0
-    if a == 10:
-        return 1
-    if a == 172 and 16 <= b <= 31:
-        return 2
-    return 3
-
-
-def lan_addresses() -> list[str]:
-    """This computer's IPv4 addresses a phone could reach, best first (see
-    ``_lan_rank``; ties keep the address on the default route first). No
-    packet is sent. Virtual adapters show up too, so all of them are offered."""
-    found: list[str] = []
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))
-            found.append(s.getsockname()[0])
-    except OSError:
-        pass
-    try:
-        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
-    except OSError:
-        infos = []
-    for info in infos:
-        address = str(info[4][0])
-        if address not in found:
-            found.append(address)
-    usable = [a for a in found if not a.startswith(("127.", "169.254.", "0."))]
-    return sorted(usable, key=_lan_rank) or ["127.0.0.1"]
-
-
-CLOUDFLARED_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download/"
-
-
-def cloudflared_path(cache: Path) -> str | None:
-    """``cloudflared`` from PATH, else a copy downloaded once into ``cache``
-    from Cloudflare's official GitHub releases. None when neither works."""
-    exe = shutil.which("cloudflared")
-    if exe:
-        return exe
-    import os
-    import platform
-    import stat
-    import tarfile
-    import urllib.request
-
-    system, machine = platform.system().lower(), platform.machine().lower()
-    arch = "arm64" if machine in ("arm64", "aarch64") else "amd64"
-    name = {"windows": f"cloudflared-windows-{arch}.exe", "linux": f"cloudflared-linux-{arch}",
-            "darwin": f"cloudflared-darwin-{arch}.tgz"}.get(system)
-    if name is None:
-        return None
-    target = cache / ("cloudflared.exe" if system == "windows" else "cloudflared")
-    if target.is_file():
-        return str(target)
-    print(f"  downloading cloudflared ({name}) from github.com/cloudflare once…", flush=True)
-    try:
-        cache.mkdir(parents=True, exist_ok=True)
-        tmp = cache / (name + ".part")
-        urllib.request.urlretrieve(CLOUDFLARED_URL + name, tmp)
-        if name.endswith(".tgz"):
-            with tarfile.open(tmp) as tar:
-                member = next(m for m in tar.getmembers() if m.name.endswith("cloudflared"))
-                with tar.extractfile(member) as src, open(target, "wb") as dst:  # type: ignore[union-attr]
-                    shutil.copyfileobj(src, dst)
-            tmp.unlink()
-        else:
-            os.replace(tmp, target)
-        target.chmod(target.stat().st_mode | stat.S_IEXEC)
-    except Exception as e:  # no internet, proxy, blocked download: the LAN address still works
-        print(f"  could not download cloudflared: {e}", flush=True)
-        return None
-    return str(target)
-
-
-def start_tunnel(port: int, cache: Path, timeout_s: float = 40.0) -> tuple[str, "subprocess.Popen[str]"] | None:
-    """A public https address for this computer through a Cloudflare quick
-    tunnel (no account), so a phone on any network, mobile data included,
-    reaches the demo. Uses ``cloudflared_path``; None when it is missing or
-    does not answer in time."""
-    exe = cloudflared_path(cache)
-    if exe is None:
-        return None
-    proc = subprocess.Popen(
-        [exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace",
-    )
-    found: list[str] = []
-
-    def read() -> None:
-        assert proc.stderr is not None
-        for line in proc.stderr:  # keep draining so the pipe never fills
-            match = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
-            if match and not found:
-                found.append(match.group(0))
-
-    threading.Thread(target=read, daemon=True).start()
-    deadline = time.monotonic() + timeout_s
-    while not found and proc.poll() is None and time.monotonic() < deadline:
-        time.sleep(0.2)
-    if not found:
-        proc.terminate()
-        return None
-    atexit.register(proc.terminate)
-    return found[0], proc
 
 
 PHONE_ROUTES = {"internet": "через інтернет, будь-яка мережа", "lan": "та сама Wi-Fi мережа"}
@@ -287,25 +167,18 @@ def _seed_farm(service: WeightService, herd: str, table: pd.DataFrame, reference
     return farm.id
 
 
-def _read_features(path: Path) -> pd.DataFrame:
-    return pd.read_csv(path, dtype={"animal_id": str}, keep_default_na=False, na_values=[""])
-
-
 def ensure_features(path: Path, roots: dict[str, Path], workers: int = 4) -> None:
     """Extract features for every requested herd the table does not have yet,
     so a fresh checkout needs no separate ``cattle3d extract`` (about a second
     per animal, once)."""
-    from cattle3d.pipeline import extract_herd
-
-    old = _read_features(path) if path.is_file() else pd.DataFrame(columns=["herd"])
-    loaders = {HERD_A: load_cowdatabase2, HERD_B: load_cowdatabase}
+    old = read_feature_table(path) if path.is_file() else pd.DataFrame(columns=["herd"])
     missing = [h for h in roots if h not in set(old["herd"])]
     if not missing:
         return
     new = []
     for herd in missing:
         print(f"first run: computing features for {HERDS[herd]['dataset']}…", flush=True)
-        new.append(extract_herd(loaders[herd](Path(roots[herd])).animals, workers=workers))
+        new.append(extract_herd(LOADERS[herd](Path(roots[herd])).animals, workers=workers))
     path.parent.mkdir(parents=True, exist_ok=True)
     pd.concat([old, *new] if len(old) else new).to_csv(path, index=False)
 
@@ -315,19 +188,18 @@ def prepare(
     cowdb2: Path | None = None, cowdb1: Path | None = None,
     phone_urls: list[tuple[str, str]] | None = None,
 ) -> tuple[WeightService, Demo]:
-    loaders = {HERD_A: (cowdb2, load_cowdatabase2), HERD_B: (cowdb1, load_cowdatabase)}
-    if cowdb2 is None and cowdb1 is None:
+    roots = {herd: Path(root) for herd, root in ((HERD_A, cowdb2), (HERD_B, cowdb1)) if root is not None}
+    if not roots:
         raise ValueError("give at least one dataset folder (--cowdb2 or --cowdb1)")
-    ensure_features(features_path, {h: root for h, (root, _) in loaders.items() if root is not None})
-    table = _read_features(features_path)
-    chosen = {herd: choose_holdout(table, herd) for herd, (root, _) in loaders.items() if root is not None}
+    ensure_features(features_path, roots)
+    table = read_feature_table(features_path)
+    chosen = {herd: choose_holdout(table, herd) for herd in roots}
     model = demo_model(table, {h: d + r for h, (d, r) in chosen.items()}, model_path)
     service = WeightService(model, Store(db_path))
     samples: list[Sample] = []
     herds: dict[str, int] = {}
     for herd, (demo_ids, reference) in chosen.items():
-        root, load = loaders[herd]
-        records: dict[str, AnimalRecord] = {a.animal_id: a for a in load(Path(root)).animals}  # type: ignore[arg-type]
+        records: dict[str, AnimalRecord] = {a.animal_id: a for a in LOADERS[herd](roots[herd]).animals}
         herds[herd] = _seed_farm(service, herd, table, reference)
         rig = herd_rig(list(records.values()))
         if rig is not None:
