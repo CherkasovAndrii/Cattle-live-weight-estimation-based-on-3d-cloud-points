@@ -233,7 +233,7 @@ def cmd_demo(args: argparse.Namespace) -> None:
             print("  no tunnel (cloudflared missing or no answer): phones need the same Wi-Fi as this computer")
         else:
             phone_urls.append(("internet", tunnel[0]))
-    if args.host not in LOCAL_HOSTS:
+    if args.host not in LOCAL_HOSTS and not args.public_url:  # a cloud server has no Wi-Fi route
         phone_urls += [("lan", f"http://{a}:{args.port}") for a in lan_addresses()]
     phone_urls = [(route, f"{base}/weigh#key={key}") for route, base in phone_urls]
     service, demo = prepare(
