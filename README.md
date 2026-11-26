@@ -97,6 +97,17 @@ If the phone cannot open the page, the cause is the network, not the app:
   QR code points there. The API key in the link still protects the data.
   Without cloudflared, connect the laptop to the phone's own hotspot.
 
+### Public cloud demo (Railway)
+
+`deploy/railway.Dockerfile` builds the same demo as a hosted service. The
+build clones both public datasets, computes features, trains the demo model,
+seeds the two demo farms and then keeps only the demo animals' clouds
+(`scripts/railway_prepare.py`), so the server starts in seconds. On Railway:
+connect the repository, set the service's Dockerfile path to
+`deploy/railway.Dockerfile`, set the variable `CATTLE3D_API_KEY`, and generate
+a domain. Open `https://<domain>/weigh#key=<CATTLE3D_API_KEY>` on a phone.
+Scans added there live in the container and reset on each deploy.
+
 What the console shows (Ukrainian, phone and computer):
 
 - **Огляд**: the farm at a glance: animals, scans of the last 14 days by
